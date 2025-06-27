@@ -1,11 +1,11 @@
 # Source code for the Sci-Fi City Builder
 # Inspired by Elite 1984
 
-# Placeholder for main game logic
-def main():
-    print("Initializing Sci-Fi City Builder...")
-    # TODO: Initialize Pygame, game state, etc.
-    print("Game loop would start here.")
+# This file makes the 'src' directory a package and can be used
+# to make the package executable.
 
 if __name__ == "__main__":
-    main()
+    # This allows running the game using `python -m src`
+    from .main import game_loop
+    print("Launching Sci-Fi City Builder via src package...")
+    game_loop()
