@@ -1,5 +1,13 @@
 # Configuration settings for the Sci-Fi City Builder
 
+import os
+
+# Determine the absolute path to the project's root directory
+# __file__ is the path to config.py (e.g., /path/to/project/src/config.py)
+# os.path.dirname(__file__) is src directory (e.g., /path/to/project/src)
+# os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) is project root (e.g., /path/to/project)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 # Screen dimensions
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
@@ -18,12 +26,12 @@ INITIAL_CREDITS = 10000
 INITIAL_POPULATION = 10
 INITIAL_POWER = 100
 
-# File paths
-ASSETS_DIR = "assets/"
-SPRITES_DIR = ASSETS_DIR + "sprites/"
-SOUND_DIR = ASSETS_DIR + "sound/"
-MUSIC_DIR = ASSETS_DIR + "music/"
-FONT_FILE = ASSETS_DIR + "fonts/VectorFont.ttf" # Placeholder, will need a retro vector font
+# File paths - now constructed from PROJECT_ROOT for robustness
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets")
+SPRITES_DIR = os.path.join(ASSETS_DIR, "sprites")
+SOUND_DIR = os.path.join(ASSETS_DIR, "sound")
+MUSIC_DIR = os.path.join(ASSETS_DIR, "music")
+FONT_FILE = os.path.join(ASSETS_DIR, "fonts", "VectorFont.ttf") # Placeholder, will need a retro vector font
 
 # Grid settings
 TILE_SIZE = 32 # pixels

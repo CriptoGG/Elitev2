@@ -1,6 +1,7 @@
 # Manages sound effects and music for Sci-Fi City Builder
 
 import pygame
+import os
 
 class SoundManager:
     def __init__(self, config):
@@ -46,11 +47,11 @@ class SoundManager:
     def load_default_sounds(self):
         # Placeholder paths - these files won't exist in the environment
         # but the code handles their absence.
-        self.load_sound("ui_click", self.config.SOUND_DIR + "ui_click.wav")
-        self.load_sound("building_place", self.config.SOUND_DIR + "building_placed.wav")
-        self.load_sound("alert_info", self.config.SOUND_DIR + "alert_info.wav")
-        self.load_sound("alert_warning", self.config.SOUND_DIR + "alert_warning.wav")
-        self.load_sound("insufficient_credits", self.config.SOUND_DIR + "error_credits.wav")
+        self.load_sound("ui_click", os.path.join(self.config.SOUND_DIR, "ui_click.wav"))
+        self.load_sound("building_place", os.path.join(self.config.SOUND_DIR, "building_placed.wav"))
+        self.load_sound("alert_info", os.path.join(self.config.SOUND_DIR, "alert_info.wav"))
+        self.load_sound("alert_warning", os.path.join(self.config.SOUND_DIR, "alert_warning.wav"))
+        self.load_sound("insufficient_credits", os.path.join(self.config.SOUND_DIR, "error_credits.wav"))
 
 
     def load_music(self, filepath):
