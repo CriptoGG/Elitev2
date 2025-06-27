@@ -138,7 +138,32 @@ def game_loop():
                         world_y = mouse_pos[1] + camera_offset_y
                         grid_x, grid_y = world_x // config.TILE_SIZE, world_y // config.TILE_SIZE
 
-                        if current_game_state.selected_building_type:
+                        if current_game_state.current_tool == "bulldozer":
+                            if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
+                                building_to_remove = current_game_state.grid[grid_y][grid_x]
+                                if building_to_remove is not None:
+                                    # Optional: Add a small cost to bulldoze
+                                    # bulldoze_cost = 50
+                                    # if current_game_state.credits >= bulldoze_cost:
+                                    #     current_game_state.credits -= bulldoze_cost
+                                    #     current_game_state.remove_building(grid_x, grid_y)
+                                    #     sound_manager_instance.play_sound("building_destroyed") # Need new sound
+                                    #     current_game_state.current_alerts.append(f"{building_to_remove.ui_name} Demolished.")
+                                    # else:
+                                    #     current_game_state.current_alerts.append("Not enough credits to bulldoze.")
+                                    #     sound_manager_instance.play_sound("insufficient_credits")
+
+                                    # Simple removal for now:
+                                    current_game_state.remove_building(grid_x, grid_y)
+                                    sound_manager_instance.play_sound("alert_warning") # Placeholder sound, ideally a "destroyed" sound
+                                    current_game_state.current_alerts.append(f"{building_to_remove.ui_name} Demolished.")
+                                else:
+                                    current_game_state.current_alerts.append("Nothing to bulldoze.")
+                                current_game_state.current_tool = None # Deactivate bulldozer after use
+                            else:
+                                current_game_state.current_alerts.append("Cannot bulldoze out of bounds.")
+                                current_game_state.current_tool = None # Deactivate
+                        elif current_game_state.selected_building_type:
                             building_key = current_game_state.selected_building_type
                             building_data = config.BUILDING_TYPES[building_key]
                             building_cost = building_data.get("cost", 0)
@@ -153,42 +178,64 @@ def game_loop():
                                 print(msg)
                                 sound_manager_instance.play_sound("insufficient_credits")
                                 current_game_state.current_alerts.append(msg)
-                            elif not (0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT):
-                                msg = "Out of Bounds!"
-                                print(msg)
-                                sound_manager_instance.play_sound("alert_warning")
-                                current_game_state.current_alerts.append(msg)
-                            elif current_game_state.grid[grid_y][grid_x] is not None:
-                                msg = "Tile Occupied!"
-                                print(msg)
-                                sound_manager_instance.play_sound("alert_warning")
-                                current_game_state.current_alerts.append(msg)
-                            else: # All checks passed, place building
-                                new_building = buildings.Building(building_key, config.BUILDING_TYPES, grid_x, grid_y, config.TILE_SIZE) # Pass TILE_SIZE
-                                current_game_state.add_building(new_building, grid_x, grid_y)
-                                sound_manager_instance.play_sound("building_place")
-                                current_game_state.current_alerts.append(f"{new_building.ui_name} Placed.")
+
+                            # Multi-tile placement check
+                            else:
+                                can_place = True
+                                building_w = building_data.get("width_tiles", 1)
+                                building_h = building_data.get("height_tiles", 1)
+
+                                if not (0 <= grid_x < config.GRID_WIDTH - (building_w -1) and \
+                                        0 <= grid_y < config.GRID_HEIGHT - (building_h -1)):
+                                    can_place = False
+                                    msg = "Out of Bounds (multi-tile)!"
+                                else:
+                                    for r_offset in range(building_h):
+                                        for c_offset in range(building_w):
+                                            if current_game_state.grid[grid_y + r_offset][grid_x + c_offset] is not None:
+                                                can_place = False; break
+                                        if not can_place: break
+
+                                if not can_place:
+                                    if msg == "": msg = "Tile Occupied (multi-tile)!" # Default if not set by bounds check
+                                    print(msg)
+                                    sound_manager_instance.play_sound("alert_warning")
+                                    current_game_state.current_alerts.append(msg)
+                                else: # All checks passed, place building
+                                    new_building = buildings.Building(building_key, config.BUILDING_TYPES, grid_x, grid_y, config.TILE_SIZE)
+                                    current_game_state.add_building(new_building, grid_x, grid_y) # GameState.add_building now handles multi-tile grid marking
+                                    sound_manager_instance.play_sound("building_place")
+                                    current_game_state.current_alerts.append(f"{new_building.ui_name} Placed.")
+                                    current_game_state.selected_building_type = None # Deselect after placement
+
                         else: # No building selected, try to select an existing one or deselect all
+                            current_game_state.selected_building_instance = None # Clear detailed selection first
                             clicked_b_on_grid = None
                             if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
                                 clicked_b_on_grid = current_game_state.grid[grid_y][grid_x]
 
-                            previously_selected_building = any(b.is_selected for b in current_game_state.buildings)
+                            previously_selected_building_on_map = any(b.is_selected for b in current_game_state.buildings)
 
                             for b in current_game_state.buildings: # Deselect all first
                                 b.is_selected = False
 
                             if clicked_b_on_grid:
                                 clicked_b_on_grid.is_selected = True
-                                print(f"Selected: {clicked_b_on_grid.ui_name}")
+                                current_game_state.selected_building_instance = clicked_b_on_grid # Store instance for detailed UI
+                                print(f"Selected: {clicked_b_on_grid.ui_name} at ({clicked_b_on_grid.grid_x}, {clicked_b_on_grid.grid_y})")
                                 sound_manager_instance.play_sound("ui_click")
-                            elif previously_selected_building : # Clicked empty space after something was selected
+                            elif previously_selected_building_on_map : # Clicked empty space after something was selected
                                 sound_manager_instance.play_sound("ui_click")
+                                current_game_state.selected_building_instance = None
 
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    if current_game_state.selected_building_type:
+                    if current_game_state.current_tool == "bulldozer":
+                        current_game_state.current_tool = None
+                        sound_manager_instance.play_sound("ui_click")
+                        print("Cleared bulldozer tool selection.")
+                    elif current_game_state.selected_building_type:
                         current_game_state.selected_building_type = None # Deselect building type
                         sound_manager_instance.play_sound("ui_click")
                         print("Cleared building selection.")
@@ -228,6 +275,10 @@ def game_loop():
         # Draw Grid (optional, can be resource intensive for large grids)
         # rendering.draw_grid(screen, config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_SIZE, (30,30,30))
 
+        # Draw Resource Nodes first, so they are under buildings
+        rendering.draw_resource_nodes(screen, current_game_state, config.TILE_SIZE,
+                                      camera_offset_x, camera_offset_y, config)
+
         # Draw Buildings (respecting camera offset)
         building_colors = {
             "default": config.COLOR_GREEN,
@@ -257,15 +308,44 @@ def game_loop():
 
             preview_rect = pygame.Rect(preview_pixel_x, preview_pixel_y, width_tiles * config.TILE_SIZE, height_tiles * config.TILE_SIZE)
 
-            # Check if buildable (basic check, more can be added)
+            # Check if buildable (now considers multi-tile footprint)
             can_build = True
-            if not (0 <= preview_grid_x < config.GRID_WIDTH and 0 <= preview_grid_y < config.GRID_HEIGHT):
-                can_build = False
-            elif current_game_state.grid[preview_grid_y][preview_grid_x] is not None:
-                 can_build = False
+            # Check all tiles the building would occupy
+            for r_offset in range(height_tiles):
+                for c_offset in range(width_tiles):
+                    check_x, check_y = preview_grid_x + c_offset, preview_grid_y + r_offset
+                    if not (0 <= check_x < config.GRID_WIDTH and 0 <= check_y < config.GRID_HEIGHT):
+                        can_build = False; break
+                    if current_game_state.grid[check_y][check_x] is not None:
+                        can_build = False; break
+                if not can_build: break
 
             preview_color = config.COLOR_BLUE if can_build else config.COLOR_RED
             rendering.draw_wireframe_rect(screen, preview_color, preview_rect, 2)
+
+        # If bulldozer tool is active, draw a special cursor/highlight
+        if current_game_state.current_tool == "bulldozer":
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            # Check if mouse is over a panel, if so, don't draw bulldozer highlight
+            on_world_for_bulldozer_preview = True
+            for panel_key, panel_obj in ui_manager.panels.items():
+                if panel_obj.rect.collidepoint((mouse_x, mouse_y)):
+                    on_world_for_bulldozer_preview = False; break
+
+            if on_world_for_bulldozer_preview:
+                hl_grid_x = (mouse_x + camera_offset_x) // config.TILE_SIZE
+                hl_grid_y = (mouse_y + camera_offset_y) // config.TILE_SIZE
+
+                if 0 <= hl_grid_x < config.GRID_WIDTH and 0 <= hl_grid_y < config.GRID_HEIGHT:
+                    hl_pixel_x = hl_grid_x * config.TILE_SIZE - camera_offset_x
+                    hl_pixel_y = hl_grid_y * config.TILE_SIZE - camera_offset_y
+
+                    highlight_rect = pygame.Rect(hl_pixel_x, hl_pixel_y, config.TILE_SIZE, config.TILE_SIZE)
+
+                    target_building = current_game_state.grid[hl_grid_y][hl_grid_x]
+                    highlight_color = config.COLOR_RED if target_building else config.COLOR_AMBER
+
+                    rendering.draw_wireframe_rect(screen, highlight_color, highlight_rect, 3) # Thicker line for bulldozer
 
 
         pygame.display.flip()

@@ -52,19 +52,91 @@ BUILDING_TYPES = {
     },
     "FACTORY_PARTS": {
         "cost": 2000, "power_draw": 15,
-        "input_resource": "RAW_ORE", "input_amount": 2, "output_resource": "CONSTRUCTION_PARTS", "output_rate": 1,
+        "input_resource": "RAW_ORE", "input_amount": 2,
+        "output_resource": "CONSTRUCTION_PARTS", "output_rate": 1, # Output 1 part
+        "cycle_time_seconds": 5, # Takes 5 seconds to make 1 part
         "ui_name": "Parts Factory",
-        "unlock_conditions": {"pop": 50, "tech": "basic_manufacturing"} # Requires pop and a tech
+        "unlock_conditions": {"pop": 50, "tech": "basic_manufacturing"}
     },
     "LIFE_SUPPORT_NEXUS": {
         "cost": 2500, "power_draw": 20, "pop_served_bonus": 0.1,
         "ui_name": "Life Support Nexus",
         "unlock_conditions": {"rank": "Colony Supervisor"} # Requires a certain city rank
+    },
+    "PUMPJACK": { # Moved PUMPJACK here to keep all extractors somewhat grouped if possible, though original was fine.
+        "cost": 2200, "power_draw": 15, "output_rate": 2, "resource_type": "OIL",
+        "ui_name": "Oil Pumpjack", "placed_on_node_type": "OIL_NODE",
+        "unlock_conditions": {"pop": 30, "rank": "Colony Starter"}
+    },
+    "MINER_IRON": {
+        "cost": 1800, "power_draw": 10, "output_rate": 1, "resource_type": "IRON_ORE",
+        "ui_name": "Iron Miner", "placed_on_node_type": "IRON_NODE",
+        "unlock_conditions": {"pop": 25}
+    },
+    "MINER_COPPER": {
+        "cost": 1800, "power_draw": 10, "output_rate": 1, "resource_type": "COPPER_ORE",
+        "ui_name": "Copper Miner", "placed_on_node_type": "COPPER_NODE",
+        "unlock_conditions": {"pop": 25}
+    },
+    "FUEL_REFINERY": {
+        "cost": 3000, "power_draw": 25,
+        "ui_name": "Fuel Refinery",
+        "input_resource": "OIL", "input_amount": 2,
+        "output_resource": "SPACESHIP_FUEL", "output_rate": 1,
+        "cycle_time_seconds": 10, # Time in seconds to complete one cycle
+        "unlock_conditions": {"pop": 75, "tech": "fuel_processing"}
+    },
+    "SPACEPORT": {
+        "cost": 50000, "power_draw": 100, "ui_name": "Spaceport",
+        "width_tiles": 3, "height_tiles": 3,
+        "unlock_conditions": {"rank": "System Governor", "tech": "orbital_construction"} # Example high-level unlock
     }
 }
 
+SPACESHIP_PART_RECIPES = {
+    "HULL_SECTION": {
+        "ui_name": "Hull Section", "cost_credits": 500,
+        "input_resources": {"IRON_ORE": 10, "CONSTRUCTION_PARTS": 5},
+        "description": "Basic structural component for spaceships."
+    },
+    "ENGINE_SMALL": {
+        "ui_name": "Small Thruster", "cost_credits": 1000,
+        "input_resources": {"COPPER_ORE": 8, "CONSTRUCTION_PARTS": 10, "RAW_ORE": 5}, # Added RAW_ORE for complexity
+        "description": "A compact thruster for small vessels."
+    },
+    "FUEL_TANK_SMALL": {
+        "ui_name": "Small Fuel Tank", "cost_credits": 300,
+        "input_resources": {"IRON_ORE": 5, "CONSTRUCTION_PARTS": 2},
+        "description": "Stores a small amount of spaceship fuel."
+    },
+    "COCKPIT_BASIC": {
+        "ui_name": "Basic Cockpit", "cost_credits": 2000,
+        "input_resources": {"CONSTRUCTION_PARTS": 15, "COPPER_ORE": 5},
+        "description": "Standard flight control and life support."
+    },
+    "CARGO_BAY_SMALL": {
+        "ui_name": "Small Cargo Bay", "cost_credits": 750,
+        "input_resources": {"IRON_ORE": 12, "CONSTRUCTION_PARTS": 3},
+        "description": "Provides limited cargo capacity."
+    }
+    # TODO: Add more advanced parts (shields, weapons, larger versions etc.)
+}
+
+
 # Resource types
-RESOURCE_TYPES = ["RAW_ORE", "CONSTRUCTION_PARTS", "FOOD_UNITS"] # Added more for future use
+RESOURCE_TYPES = [
+    "RAW_ORE", "CONSTRUCTION_PARTS", "FOOD_UNITS", # Existing
+    "OIL", "IRON_ORE", "COPPER_ORE", "SPACESHIP_FUEL", "SHIP_PARTS" # New
+]
+# Define identifiers for resource nodes on the map resource_grid
+RESOURCE_NODE_TYPES = {
+    "OIL_NODE": {"color": (30,30,30), "ui_name": "Crude Oil Seep"}, # Dark grey for oil
+    "IRON_NODE": {"color": (139,69,19), "ui_name": "Iron Ore Deposit"}, # Brown for iron
+    "COPPER_NODE": {"color": (184,115,51), "ui_name": "Copper Ore Deposit"} # Coppery for copper
+}
+
+# Building types, technologies etc. are defined below this block in the original structure.
+# I will ensure the BUILDING_TYPES dictionary is defined only once.
 
 # City Ranks and progression thresholds (example: total building value)
 CITY_RANKS = [
@@ -78,7 +150,9 @@ CITY_RANKS = [
 
 # Technologies (placeholder for now)
 TECHNOLOGIES = {
-    "basic_manufacturing": {"name": "Basic Manufacturing", "cost": 5000, "unlocks_buildings": ["FACTORY_PARTS"], "description": "Enables production of construction parts."}
+    "basic_manufacturing": {"name": "Basic Manufacturing", "cost": 5000, "unlocks_buildings": ["FACTORY_PARTS"], "description": "Enables production of construction parts."},
+    "fuel_processing": {"name": "Fuel Processing", "cost": 7500, "unlocks_buildings": ["FUEL_REFINERY"], "description": "Allows refining Oil into Spaceship Fuel."},
+    "orbital_construction": {"name": "Orbital Construction", "cost": 25000, "unlocks_buildings": ["SPACEPORT"], "description": "Enables construction of spaceports and large orbital structures."}
     # More techs to be added
 }
 

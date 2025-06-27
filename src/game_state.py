@@ -14,6 +14,7 @@ class GameState:
         self.grid = [[None for _ in range(config.GRID_WIDTH)] for _ in range(config.GRID_HEIGHT)] # Represents the city grid
 
         self.selected_building_type = None # For construction mode
+        self.current_tool = None # For tools like 'bulldozer'
         self.game_time = 0 # Could be ticks or a simulated date/time
 
         self.city_rank_index = 0 # Index in config.CITY_RANKS
@@ -24,33 +25,113 @@ class GameState:
         self.current_alerts = [] # List of active alerts/events
         self.clock = None # Will be set by main to get FPS
 
+        # Resource node map
+        self.resource_grid = [[None for _ in range(config.GRID_WIDTH)] for _ in range(config.GRID_HEIGHT)]
+        self._generate_resource_nodes()
+
+        self.ship_parts_inventory = {} # Stores counts of crafted ship parts, e.g. {"HULL_SECTION": 2}
+        self.selected_building_instance = None # To store the actual instance of a selected building, e.g. for Spaceport UI
+
+
         print("GameState initialized.")
+
+    def _generate_resource_nodes(self, num_patches_per_type=5, patch_size_min=2, patch_size_max=5):
+        """Generates resource nodes on the map. For testing/initial setup."""
+        import random
+        print("Generating resource nodes...")
+        for node_type_key in self.config.RESOURCE_NODE_TYPES.keys():
+            for _ in range(num_patches_per_type):
+                # Attempt to place a patch
+                placed_patch = False
+                for attempt in range(10): # Try a few times to find a spot
+                    patch_width = random.randint(patch_size_min, patch_size_max)
+                    patch_height = random.randint(patch_size_min, patch_size_max)
+                    start_x = random.randint(0, self.config.GRID_WIDTH - patch_width)
+                    start_y = random.randint(0, self.config.GRID_HEIGHT - patch_height)
+
+                    # Check if area is clear (no other resource nodes)
+                    can_place = True
+                    for r in range(patch_height):
+                        for c in range(patch_width):
+                            if self.resource_grid[start_y + r][start_x + c] is not None:
+                                can_place = False
+                                break
+                        if not can_place: break
+
+                    if can_place:
+                        for r in range(patch_height):
+                            for c in range(patch_width):
+                                # 50% chance to place node within the patch area for some sparsity
+                                if random.random() < 0.7: # Make patches a bit denser
+                                    self.resource_grid[start_y + r][start_x + c] = node_type_key
+                        placed_patch = True
+                        # print(f"Placed {node_type_key} patch at ({start_x},{start_y}) dim({patch_width}x{patch_height})")
+                        break # Placed this patch, move to next patch
+                # if not placed_patch:
+                    # print(f"Could not place patch for {node_type_key} after {attempt+1} attempts.")
+        print("Resource node generation complete.")
+
 
     def add_building(self, building_object, grid_x, grid_y):
         """Adds a building to the game state and grid."""
+        # Check if building needs a specific node type (from config)
+        required_node_type = building_object.config.get("placed_on_node_type")
+        current_node_on_tile = self.resource_grid[grid_y][grid_x]
+
+        if required_node_type and current_node_on_tile != required_node_type:
+            # This logic is more for preventing placement, but actual production check is in Building.update()
+            # For now, we allow placement but it won't work. An alert could be raised here.
+            print(f"Warning: {building_object.ui_name} placed on wrong node type ({current_node_on_tile} instead of {required_node_type}). It may not function.")
+            # self.current_alerts.append(f"{building_object.ui_name} needs {self.config.RESOURCE_NODE_TYPES[required_node_type]['ui_name']}")
+            # return False # If we want to prevent placement entirely
+
         self.buildings.append(building_object)
-        # Assuming building_object has attributes like width_tiles, height_tiles
-        # For simplicity, let's assume all buildings are 1x1 for now
-        self.grid[grid_y][grid_x] = building_object
+        # Mark all tiles occupied by the building
+        for r_offset in range(building_object.height_tiles):
+            for c_offset in range(building_object.width_tiles):
+                self.grid[grid_y + r_offset][grid_x + c_offset] = building_object
+
         self.credits -= building_object.cost
-        self.city_value += building_object.cost # Add to city value
+        self.city_value += building_object.cost
         self.update_power_balance()
-        self.check_for_rank_up() # Check if city rank increases
-        print(f"Building {building_object.ui_name} added at ({grid_x}, {grid_y}). Credits: {self.credits}. City Value: {self.city_value}")
+        self.check_for_rank_up()
+        print(f"Building {building_object.ui_name} added at ({grid_x}, {grid_y}) covering {building_object.width_tiles}x{building_object.height_tiles} tiles. Credits: {self.credits}. City Value: {self.city_value}")
+        return True
+
 
     def remove_building(self, grid_x, grid_y):
-        """Removes a building from the game state and grid."""
+        """Removes a building from the game state and grid. grid_x, grid_y is the top-left tile."""
         building_to_remove = self.grid[grid_y][grid_x]
         if building_to_remove:
-            self.buildings.remove(building_to_remove)
+            # Clear all tiles occupied by the building
+            for r_offset in range(building_to_remove.height_tiles):
+                for c_offset in range(building_to_remove.width_tiles):
+                    # Check bounds, though ideally building data is consistent
+                    if 0 <= grid_y + r_offset < self.config.GRID_HEIGHT and \
+                       0 <= grid_x + c_offset < self.config.GRID_WIDTH:
+                        self.grid[grid_y + r_offset][grid_x + c_offset] = None
+
+            if building_to_remove in self.buildings:
+                 self.buildings.remove(building_to_remove)
+            else:
+                # This might happen if remove_building is called with a non-origin tile of a multi-tile building.
+                # It should ideally be called with the building_object's own grid_x, grid_y.
+                # For now, we assume it's found and proceed with value/power updates.
+                # A more robust solution would be to find the building instance if not at the exact x,y.
+                print(f"Warning: Building at {grid_x},{grid_y} was in grid but not in master building list during removal. This may indicate an issue if it's not the top-left tile of a multi-tile building.")
+
+
             self.city_value -= building_to_remove.cost # Subtract from city value
             if self.city_value < 0: self.city_value = 0
-            self.grid[grid_y][grid_x] = None
+
             # Potentially refund some cost
             # self.credits += building_to_remove.cost * 0.5 # Example refund
+
             self.update_power_balance()
-            self.check_for_rank_up() # Rank might decrease if value drops, or just check if it can still increase
-            print(f"Building removed from ({grid_x}, {grid_y}). City Value: {self.city_value}")
+            self.check_for_rank_up() # Rank might decrease if value drops
+            print(f"Building {building_to_remove.ui_name} removed from ({grid_x}, {grid_y}). City Value: {self.city_value}")
+            if self.selected_building_instance == building_to_remove:
+                self.selected_building_instance = None # Deselect if it was selected
         else:
             print(f"No building at ({grid_x}, {grid_y}) to remove.")
 

@@ -107,26 +107,40 @@ class UIManager:
         status_panel.add_text_label(lambda gs: f"PWR: {gs.power_demand} / {gs.power_capacity}", (col1_x, self.config.UI_PADDING + 40), self.config.UI_TEXT_COLOR)
 
         # Column 2: Resources
-        resource_start_x = self.config.UI_PADDING + 250
+        resource_start_x = self.config.UI_PADDING + 220 # Adjusted start X for more space
         resource_y_offset = 0
+        # Define which resources to display and in what order
+        displayable_resources = [r for r in self.config.RESOURCE_TYPES if r not in []] # Show all for now
+        # SPACESHIP_FUEL will now be shown. SHIP_PARTS also shown.
+
         max_res_per_col = 3 # Max resources to show in this column before starting a new one
-        col_idx = 0
-        for i, res_type in enumerate(self.config.RESOURCE_TYPES):
-            if i % max_res_per_col == 0 and i > 0:
-                col_idx +=1
-                resource_y_offset = 0
 
-            current_col_x = resource_start_x + (col_idx * 180) # Adjust spacing for new columns
+        num_resource_cols = (len(displayable_resources) + max_res_per_col -1) // max_res_per_col
+        resource_col_width = 160 # Width per resource column
 
-            status_panel.add_text_label(
-                lambda gs, r=res_type: f"{r.replace('_', ' ')}: {gs.resources.get(r, 0)}",
-                (current_col_x, self.config.UI_PADDING + resource_y_offset),
-                self.config.UI_TEXT_COLOR
-            )
-            resource_y_offset += 20
+        for col_idx in range(num_resource_cols):
+            current_col_x = resource_start_x + (col_idx * resource_col_width)
+            resource_y_offset = 0 # Reset for each new column
+            for i in range(max_res_per_col):
+                res_idx = col_idx * max_res_per_col + i
+                if res_idx < len(displayable_resources):
+                    res_type = displayable_resources[res_idx]
+                    status_panel.add_text_label(
+                        # Lambda needs to capture res_type correctly for each label
+                        (lambda rt: lambda gs: f"{rt.replace('_', ' ').title()}: {gs.resources.get(rt, 0)}")(res_type),
+                        (current_col_x, self.config.UI_PADDING + resource_y_offset),
+                        self.config.UI_TEXT_COLOR
+                    )
+                    resource_y_offset += 20
+
 
         # Column 3 (or last column): Game Info & Actions
-        col3_x = self.screen_width - 220 # Position for the last column elements
+        # Adjust col3_x based on how many resource columns we have.
+        col3_x = resource_start_x + (num_resource_cols * resource_col_width) + self.config.UI_PADDING
+        # Ensure col3_x is not too far left if there are few resources. Min position:
+        col3_x = max(col3_x, self.screen_width - 220)
+
+
         status_panel.add_text_label(lambda gs: f"TIME: {gs.game_time // gs.config.FPS}s", (col3_x, self.config.UI_PADDING), self.config.UI_TEXT_COLOR)
         status_panel.add_text_label(lambda gs: f"RANK: {gs.city_rank}", (col3_x, self.config.UI_PADDING + 20), self.config.UI_TEXT_COLOR)
         status_panel.add_text_label(lambda gs: f"FPS: {int(gs.clock.get_fps()) if gs.clock else 'N/A'}", (col3_x, self.config.UI_PADDING + 40), self.config.UI_TEXT_COLOR)
@@ -215,12 +229,40 @@ class UIManager:
             build_panel.add_text_label(lambda gs: "BUILD MENU (Rank: "+gs.city_rank+")", (self.config.UI_PADDING, current_y), self.config.UI_TEXT_COLOR)
             current_y += 25
 
+            # --- Add Bulldozer Button ---
+            def create_bulldozer_action(gs_ref):
+                def action_func():
+                    gs_ref.selected_building_type = None # Clear any building selection
+                    gs_ref.current_tool = "bulldozer"
+                    print("UI: Selected BULLDOZER tool.")
+                    # TODO: Play sound_manager.play_sound("ui_click_special") or similar
+                    if hasattr(gs_ref, 'sound_manager_instance') and gs_ref.sound_manager_instance: # Check if sound_manager is accessible
+                        gs_ref.sound_manager_instance.play_sound("ui_click")
+                return action_func
+
+            bulldozer_action = create_bulldozer_action(game_state_ref)
+            bulldozer_button_text = "BULLDOZE"
+            bulldozer_color = self.config.COLOR_RED if game_state_ref.current_tool == "bulldozer" else self.config.COLOR_BLUE
+
+            button_widget = build_panel.add_button(
+                self.config.UI_PADDING, current_y,
+                build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
+                bulldozer_button_text,
+                bulldozer_action
+            )
+            button_widget.button_color = bulldozer_color
+            button_widget.text_color = self.config.UI_TEXT_COLOR # Keep text color standard for now
+            current_y += 35
+            # --- End Bulldozer Button ---
+
+
             for i, (b_key, b_data) in enumerate(self.config.BUILDING_TYPES.items()):
                 # Check if the building is unlocked before adding the button
                 if game_state_ref.is_building_unlocked(b_key):
                     def create_build_action_with_gs(key_to_build, gs_ref):
                         # Action: set selected building type if affordable
                         def action_func():
+                            gs_ref.current_tool = None # Clear bulldozer tool if active
                             # Check unlock status again just in case it changed between UI refresh and click
                             if not gs_ref.is_building_unlocked(key_to_build):
                                 print(f"UI: {b_data['ui_name']} is locked.")
@@ -243,9 +285,15 @@ class UIManager:
 
                     current_button_color = self.config.COLOR_BLUE
                     text_color = self.config.UI_TEXT_COLOR
+
+                    # Highlight if this building type is selected
+                    if game_state_ref.selected_building_type == b_key:
+                        current_button_color = self.config.COLOR_AMBER # Highlight selected building type
+
                     if game_state_ref.credits < b_data.get('cost',0):
                         current_button_color = (60,60,60) # Dim if not affordable
                         text_color = (150,150,150)
+
 
                     button_widget = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
@@ -258,7 +306,6 @@ class UIManager:
                     current_y += 35
                 else:
                     # Optionally, show locked buildings as greyed out / unclickable
-                    # For now, just don't add them to the build menu.
                     button_text = f"{b_data['ui_name']} (Locked)"
                     button_widget = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
@@ -270,8 +317,6 @@ class UIManager:
                     button_widget.text_color = (100,100,100)
                     button_widget.is_hovered = False # Prevent hover effect
                     current_y += 35
-
-                    # For now, just don't add them to the build menu.
                     pass
 
 

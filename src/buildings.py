@@ -32,9 +32,19 @@ class Building:
         if self.type_key == "HAB_DOME":
             self.capacity = self.config.get("capacity", 0)
             self.current_occupants = 0
-        elif self.type_key == "RESOURCE_EXTRACTOR" or self.type_key == "MINE": # Handle MINE for tests
+        elif self.type_key == "RESOURCE_EXTRACTOR" or self.type_key == "MINE" or \
+             self.type_key == "PUMPJACK" or self.type_key == "MINER_IRON" or self.type_key == "MINER_COPPER":
             self.output_rate = self.config.get("output_rate", 0)
-            self.resource_type = self.config.get("resource_type", "RAW_ORE") # Default if not in config
+            self.resource_type = self.config.get("resource_type", None) # Specific extractors define this
+            self.placed_on_node_type = self.config.get("placed_on_node_type", None) # What node it needs to be on
+        elif self.type_key == "FUEL_REFINERY" or self.type_key == "FACTORY_PARTS": # Generalize for factory-like buildings
+            self.input_resource = self.config.get("input_resource", None)
+            self.input_amount = self.config.get("input_amount", 0)
+            self.output_resource = self.config.get("output_resource", None)
+            self.output_rate = self.config.get("output_rate", 0) # Output per cycle
+            self.cycle_time_seconds = self.config.get("cycle_time_seconds", 5) # Default to 5s if not specified
+            self.production_timer_ticks = 0 # Counts game ticks
+
 
         # print(f"Building '{self.ui_name}' of type '{self.type_key}' created at grid ({grid_x},{grid_y}). Using TILE_SIZE: {self.tile_size}")
 
@@ -81,17 +91,46 @@ class Building:
             # if it's operational.
             pass
 
-        elif self.type_key == "RESOURCE_EXTRACTOR":
-            # This is where the extractor would add to global resources.
-            # This should happen at a fixed rate, e.g., once per second.
-            # We need to use game_state.game_time and game_state.config.FPS for timing.
-            if game_state.game_time % game_state.config.FPS == 0: # Produce once per second
+        elif self.type_key == "RESOURCE_EXTRACTOR" or \
+             self.type_key == "PUMPJACK" or \
+             self.type_key == "MINER_IRON" or \
+             self.type_key == "MINER_COPPER":
+
+            can_produce = True
+            # Check if this extractor type needs to be on a specific node
+            if self.placed_on_node_type:
+                current_node_on_tile = game_state.resource_grid[self.grid_y][self.grid_x]
+                if current_node_on_tile != self.placed_on_node_type:
+                    can_produce = False
+
+            if can_produce and self.resource_type and game_state.game_time % game_state.config.FPS == 0: # Produce once per second
                 if self.resource_type in game_state.resources:
                     game_state.resources[self.resource_type] += self.output_rate
-                    # print(f"{self.ui_name} produced {self.output_rate} {self.resource_type}. Total: {game_state.resources[self.resource_type]}")
+                    # print(f"{self.ui_name} produced {self.output_rate} {self.resource_type} (on node: {game_state.resource_grid[self.grid_y][self.grid_x]}). Total: {game_state.resources[self.resource_type]}")
                 else:
                     # print(f"Warning: Resource type {self.resource_type} not in game_state.resources for {self.ui_name}")
                     pass
+            # elif not can_produce and game_state.game_time % game_state.config.FPS == 0 : # Log if not producing due to wrong placement
+                # print(f"{self.ui_name} at ({self.grid_x},{self.grid_y}) is not on a valid resource node ({self.placed_on_node_type} needed, found {game_state.resource_grid[self.grid_y][self.grid_x]})")
+
+        elif self.type_key == "FUEL_REFINERY" or self.type_key == "FACTORY_PARTS": # General factory logic
+            if self.input_resource and self.output_resource and self.input_amount > 0 and self.output_rate > 0:
+                self.production_timer_ticks += 1
+
+                required_ticks_for_cycle = self.cycle_time_seconds * game_state.config.FPS
+
+                if self.production_timer_ticks >= required_ticks_for_cycle:
+                    if game_state.resources.get(self.input_resource, 0) >= self.input_amount:
+                        game_state.resources[self.input_resource] -= self.input_amount
+                        game_state.resources[self.output_resource] = game_state.resources.get(self.output_resource, 0) + self.output_rate
+                        # print(f"{self.ui_name} consumed {self.input_amount} {self.input_resource}, produced {self.output_rate} {self.output_resource}.")
+                        self.production_timer_ticks = 0 # Reset timer
+                    else:
+                        # Not enough input resources, stall timer slightly or log
+                        self.production_timer_ticks = required_ticks_for_cycle # Keep timer full so it tries next tick
+                        # print(f"{self.ui_name} needs {self.input_amount} of {self.input_resource} to produce.")
+                        pass
+
 
         # Add more building-specific updates here (e.g., factories consuming input, producing output)
 
@@ -120,6 +159,29 @@ class Building:
         elif self.type_key == "SOLAR_PANEL_ARRAY":
             pygame.draw.line(surface, draw_color, (rect.centerx, rect.top), (rect.centerx, rect.bottom), 1)
             pygame.draw.line(surface, draw_color, (rect.left, rect.centery), (rect.right, rect.centery), 1)
+        elif self.type_key == "RESOURCE_EXTRACTOR" or self.type_key == "MINER_IRON" or self.type_key == "MINER_COPPER":
+            # Simple 'M' for Miner/Extractor
+            pygame.draw.line(surface, draw_color, (rect.left + 2, rect.bottom - 2), (rect.left + 2, rect.top + 2), 1)
+            pygame.draw.line(surface, draw_color, (rect.left + 2, rect.top + 2), (rect.centerx, rect.centery), 1)
+            pygame.draw.line(surface, draw_color, (rect.centerx, rect.centery), (rect.right - 2, rect.top + 2), 1)
+            pygame.draw.line(surface, draw_color, (rect.right - 2, rect.top + 2), (rect.right - 2, rect.bottom - 2), 1)
+        elif self.type_key == "PUMPJACK":
+            # Simple 'P' or derrick like structure
+            pygame.draw.rect(surface, draw_color, rect.inflate(-rect.width * 0.6, -rect.height * 0.6), 1) # smaller inner box
+            pygame.draw.line(surface, draw_color, (rect.centerx, rect.top), (rect.centerx, rect.bottom),1)
+        elif self.type_key == "FACTORY_PARTS" or self.type_key == "FUEL_REFINERY":
+            # Simple 'F' for Factory/Refinery
+            pygame.draw.line(surface, draw_color, (rect.left + 2, rect.top + 2), (rect.left + 2, rect.bottom - 2), 1) # Vertical bar
+            pygame.draw.line(surface, draw_color, (rect.left + 2, rect.top + 2), (rect.right - 2, rect.top + 2), 1) # Top bar
+            pygame.draw.line(surface, draw_color, (rect.left + 2, rect.centery -2), (rect.right -5, rect.centery-2),1) # Middle bar (shorter)
+        elif self.type_key == "SPACEPORT":
+            # Large square with a smaller centered square or circle
+            pygame.draw.rect(surface, draw_color, rect.inflate(-rect.width*0.8, -rect.height*0.8),1) # Inner small square
+            # Maybe some diagonal lines to indicate a large structure
+            pygame.draw.line(surface, draw_color, rect.topleft, rect.center, 1)
+            pygame.draw.line(surface, draw_color, rect.topright, rect.center, 1)
+            pygame.draw.line(surface, draw_color, rect.bottomleft, rect.center, 1)
+            pygame.draw.line(surface, draw_color, rect.bottomright, rect.center, 1)
 
 
 # Example of how to create buildings:
