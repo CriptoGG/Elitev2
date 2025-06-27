@@ -45,9 +45,29 @@ def draw_ui_panel(surface, screen_height, panel_height, color):
     pygame.draw.rect(surface, color, panel_rect) # Solid panel for now
     draw_wireframe_rect(surface, (100,100,100), panel_rect, 1) # Border
 
+def draw_resource_nodes(surface, game_state, tile_size, camera_offset_x, camera_offset_y, config_ref):
+    """Draws resource nodes on the grid."""
+    for r_idx, row in enumerate(game_state.resource_grid):
+        for c_idx, node_type_key in enumerate(row):
+            if node_type_key:
+                node_config = config_ref.RESOURCE_NODE_TYPES.get(node_type_key)
+                if node_config:
+                    color = node_config.get("color", (255,255,255)) # Default to white if no color
+
+                    # Small rect in the center of the tile for the node
+                    node_rect_size = tile_size // 3
+                    node_rect_x = c_idx * tile_size + (tile_size - node_rect_size) // 2 - camera_offset_x
+                    node_rect_y = r_idx * tile_size + (tile_size - node_rect_size) // 2 - camera_offset_y
+
+                    node_screen_rect = pygame.Rect(node_rect_x, node_rect_y, node_rect_size, node_rect_size)
+
+                    # Only draw if on screen (basic culling)
+                    if node_screen_rect.colliderect(surface.get_rect()):
+                         pygame.draw.rect(surface, color, node_screen_rect, 0) # Filled rect for node
+
+
 # More functions will be added for:
 # - Drawing specific building wireframes
-# - Rendering resource icons (simple vector style)
 # - Handling camera/viewport for scrolling
 # - Special effects (e.g., lines for power conduits)
 
