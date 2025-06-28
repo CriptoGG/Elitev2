@@ -44,13 +44,13 @@ GRID_HEIGHT = 50 # tiles
 # Unlock conditions: "pop": min_population, "rank": "min_rank_name", "tech": "tech_id"
 BUILDING_TYPES = {
     "COMMAND_CENTER": {"cost": 5000, "power_draw": 10, "ui_name": "Command Center", "unlock_conditions": {}}, # Always available
-    "HAB_DOME": {"cost": 500, "power_draw": 2, "capacity": 10, "ui_name": "Habitation Dome", "unlock_conditions": {}, "income": 10}, # Always available, generates 10 credits per second
+    "HAB_DOME": {"cost": 500, "power_draw": 2, "capacity": 10, "ui_name": "Habitation Dome", "unlock_conditions": {}, "income": 10}, # Always available
     "SOLAR_PANEL_ARRAY": {"cost": 1000, "power_gen": 20, "ui_name": "Solar Array", "unlock_conditions": {}}, # Always available
     "POWER_CONDUIT": {"cost": 50, "power_draw": 0, "ui_name": "Power Conduit", "unlock_conditions": {}}, # Always available
     "RESOURCE_EXTRACTOR": {
         "cost": 1500, "power_draw": 5, "output_rate": 1, "resource_type": "RAW_ORE",
         "ui_name": "Ore Extractor",
-        "unlock_conditions": {"pop": 20} # Requires 20 population
+        "unlock_conditions": {} # Made available from start
     },
     "FACTORY_PARTS": {
         "cost": 2000, "power_draw": 15,
@@ -58,27 +58,27 @@ BUILDING_TYPES = {
         "output_resource": "CONSTRUCTION_PARTS", "output_rate": 1, # Output 1 part
         "cycle_time_seconds": 5, # Takes 5 seconds to make 1 part
         "ui_name": "Parts Factory",
-        "unlock_conditions": {"pop": 50, "tech": "basic_manufacturing"}
+        "unlock_conditions": {} # Made available from start
     },
     "LIFE_SUPPORT_NEXUS": {
         "cost": 2500, "power_draw": 20, "pop_served_bonus": 0.1,
         "ui_name": "Life Support Nexus",
-        "unlock_conditions": {"rank": "Colony Supervisor"} # Requires a certain city rank
+        "unlock_conditions": {} # Made available from start
     },
-    "PUMPJACK": { # Moved PUMPJACK here to keep all extractors somewhat grouped if possible, though original was fine.
+    "PUMPJACK": {
         "cost": 2200, "power_draw": 15, "output_rate": 2, "resource_type": "OIL",
         "ui_name": "Oil Pumpjack", "placed_on_node_type": "OIL_NODE",
-        "unlock_conditions": {"pop": 30, "rank": "Colony Starter"}
+        "unlock_conditions": {} # Made available from start
     },
     "MINER_IRON": {
         "cost": 1800, "power_draw": 10, "output_rate": 1, "resource_type": "IRON_ORE",
         "ui_name": "Iron Miner", "placed_on_node_type": "IRON_NODE",
-        "unlock_conditions": {"pop": 25}
+        "unlock_conditions": {} # Made available from start
     },
     "MINER_COPPER": {
         "cost": 1800, "power_draw": 10, "output_rate": 1, "resource_type": "COPPER_ORE",
         "ui_name": "Copper Miner", "placed_on_node_type": "COPPER_NODE",
-        "unlock_conditions": {"pop": 25}
+        "unlock_conditions": {} # Made available from start
     },
     "FUEL_REFINERY": {
         "cost": 3000, "power_draw": 25,
@@ -86,12 +86,12 @@ BUILDING_TYPES = {
         "input_resource": "OIL", "input_amount": 2,
         "output_resource": "SPACESHIP_FUEL", "output_rate": 1,
         "cycle_time_seconds": 10, # Time in seconds to complete one cycle
-        "unlock_conditions": {"pop": 75, "tech": "fuel_processing"}
+        "unlock_conditions": {} # Made available from start
     },
     "SPACEPORT": {
         "cost": 50000, "power_draw": 100, "ui_name": "Spaceport",
         "width_tiles": 3, "height_tiles": 3,
-        "unlock_conditions": {"rank": "System Governor", "tech": "orbital_construction"} # Example high-level unlock
+        "unlock_conditions": {"rank": "System Governor", "tech": "orbital_construction"} # Retains original conditions
     }
 }
 
