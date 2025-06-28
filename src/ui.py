@@ -53,7 +53,10 @@ class UIPanel:
         self.elements.append({"type": "text", "text_func": text_func, "pos": position, "color": color})
 
     def add_button(self, x, y, width, height, text, action):
-        button = Button(x,y,width,height, text, self.font, self.config.UI_TEXT_COLOR, self.config.COLOR_BLUE, self.config.COLOR_AMBER, action)
+        # Convert panel-relative x, y to screen-absolute coordinates
+        screen_x = self.rect.x + x
+        screen_y = self.rect.y + y
+        button = Button(screen_x, screen_y, width, height, text, self.font, self.config.UI_TEXT_COLOR, self.config.COLOR_BLUE, self.config.COLOR_AMBER, action)
         self.elements.append({"type": "button", "widget": button})
         return button
 

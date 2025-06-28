@@ -36,6 +36,7 @@ class TestBuilding(unittest.TestCase):
                 {"name": "Test Rank Advanced", "threshold_value": 1000},
             ]
             # FPS = 30 # Already defined above, ensure it's available for GameState
+            RESOURCE_NODE_TYPES = {} # Added for GameState initialization
 
         self.config = MockConfig()
         self.building_configs = self.config.BUILDING_TYPES # This is config_data for Building
