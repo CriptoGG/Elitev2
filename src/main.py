@@ -71,239 +71,274 @@ def game_loop():
     #     game_font = pygame.font.SysFont(None, config.UI_FONT_SIZE)
 
     current_game_state = game_state.GameState(config)
-    sound_manager_instance = sound_manager.SoundManager(config) # Initialize SoundManager
-    ui_manager = ui.UIManager(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, config) # Pass sound_manager if UI needs to play sounds directly
+    sound_manager_instance = sound_manager.SoundManager(config)
+    ui_manager = ui.UIManager(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, config)
 
-    # Connect Save/Load buttons
-    if ui_manager.save_button: # Check if button was created
+    # --- Assign actions to Escape Menu buttons ---
+    # Save Button
+    if hasattr(ui_manager, 'save_button') and ui_manager.save_button:
         ui_manager.save_button.action = lambda: save_game(current_game_state)
-    if ui_manager.load_button:
-        # Pass ui_manager to the load_game function via lambda
+
+    # Load Button
+    if hasattr(ui_manager, 'load_button') and ui_manager.load_button:
+        # Pass ui_manager to the load_game function via lambda for UI refresh after load
         ui_manager.load_button.action = lambda: load_game(current_game_state, ui_manager)
 
-    # This ensures button actions in the UI can modify the game state (for build panel)
+    # Quit Button
+    # We need a way to modify 'running' from the lambda.
+    # A mutable type like a list can be used, or make 'running' an attribute of a class instance.
+    # For simplicity here, we'll define a helper that can change 'running'.
+    # This is a bit of a hack for a local variable. A Game class would be cleaner.
+
+    # To make 'running' modifiable by lambda, we can wrap it or use a more robust approach.
+    # For now, let's assume 'running' will be handled by a direct assignment later if needed,
+    # or we can make game_loop return a status.
+    # The simplest for now:
+    def quit_game_action():
+        nonlocal running # This allows the lambda to modify the 'running' in game_loop's scope
+        running = False
+        print("UI: Quit button pressed. Setting running to False.")
+
+    if hasattr(ui_manager, 'quit_button') and ui_manager.quit_button:
+        ui_manager.quit_button.action = quit_game_action
+
+    # Resume button's action is already set in ui.py to toggle the menu.
+    # We will handle the game pause/unpause logic based on menu visibility.
+
     ui_manager.set_build_panel_button_actions(current_game_state)
-
-    # Add sound_manager to game_state so UI actions can trigger sounds through it
     current_game_state.sound_manager_instance = sound_manager_instance
-
-    # Setup time control buttons
     ui_manager.set_time_control_button_actions(current_game_state)
 
-
-    clock = pygame.time.Clock() # For FPS control
-    current_game_state.clock = clock # Give game_state access to the clock for FPS display
+    clock = pygame.time.Clock()
+    current_game_state.clock = clock
     running = True
+    game_paused = False # To control game logic updates and rendering
+    previous_time_multiplier = current_game_state.time_multiplier # Store initial multiplier
 
-    # Camera/viewport offset
     camera_offset_x = 0
     camera_offset_y = 0
     camera_speed = 10
 
-
     print("Starting game loop...")
     while running:
-        # Event Handling
+        mouse_pos = pygame.mouse.get_pos() # Get mouse position once per frame
+
+        # Store previous pause state to detect changes
+        was_paused = game_paused
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                break # Exit event loop immediately
 
-            # Pass event to UI Manager first
-            # --- Event Handling ---
-            mouse_pos = pygame.mouse.get_pos() # Get mouse position once per frame for efficiency
+            # --- Escape Key for Menu Toggle ---
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                # First, check if any text input is active or similar modal state, if we add those later.
+                # For now, Esc always toggles the menu or clears selections.
 
-            if ui_manager.handle_event(event, current_game_state):
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    # Check if the click was on an actual button widget
-                    clicked_on_button = False
-                    for panel in ui_manager.panels.values():
-                        if hasattr(panel, 'is_visible') and not panel.is_visible and panel_key != "build_panel": continue # Allow build panel clicks
-                        if panel.rect.collidepoint(mouse_pos): # Check if click is within panel first
-                            for elem in panel.elements:
-                                if elem["type"] == "button" and elem["widget"].rect.collidepoint(mouse_pos):
-                                    if elem["widget"].action : # Only play sound if button has an action and was truly clicked
-                                        clicked_on_button = True
-                                        break
-                            if clicked_on_button: break
-                    if clicked_on_button:
-                        sound_manager_instance.play_sound("ui_click")
-                continue # UI handled the event
-
-            # Game world interaction (if not handled by UI)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1: # Left click
-                    # Check if the click was on the game world (not on an active UI panel)
-                    on_world = True
-                    for panel_key, panel_obj in ui_manager.panels.items():
-                        if panel_key == "build_panel" and not (hasattr(panel_obj, 'is_visible') and not panel_obj.is_visible):
-                            # If build panel is visible, clicks on it are handled by UI
-                            if panel_obj.rect.collidepoint(mouse_pos):
-                                on_world = False; break
-                        elif panel_key != "build_panel" and panel_obj.rect.collidepoint(mouse_pos):
-                             # For other panels (like status bar), clicks on them are not world clicks
-                            on_world = False; break
-
-                    if on_world:
-                        world_x = mouse_pos[0] + camera_offset_x
-                        world_y = mouse_pos[1] + camera_offset_y
-                        grid_x, grid_y = world_x // config.TILE_SIZE, world_y // config.TILE_SIZE
-
-                        if current_game_state.current_tool == "bulldozer":
-                            if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
-                                building_to_remove = current_game_state.grid[grid_y][grid_x]
-                                if building_to_remove is not None:
-                                    # Optional: Add a small cost to bulldoze
-                                    # bulldoze_cost = 50
-                                    # if current_game_state.credits >= bulldoze_cost:
-                                    #     current_game_state.credits -= bulldoze_cost
-                                    #     current_game_state.remove_building(grid_x, grid_y)
-                                    #     sound_manager_instance.play_sound("building_destroyed") # Need new sound
-                                    #     current_game_state.current_alerts.append(f"{building_to_remove.ui_name} Demolished.")
-                                    # else:
-                                    #     current_game_state.current_alerts.append("Not enough credits to bulldoze.")
-                                    #     sound_manager_instance.play_sound("insufficient_credits")
-
-                                    # Simple removal for now:
-                                    current_game_state.remove_building(grid_x, grid_y)
-                                    sound_manager_instance.play_sound("alert_warning") # Placeholder sound, ideally a "destroyed" sound
-                                    current_game_state.current_alerts.append(f"{building_to_remove.ui_name} Demolished.")
-                                else:
-                                    current_game_state.current_alerts.append("Nothing to bulldoze.")
-                                current_game_state.current_tool = None # Deactivate bulldozer after use
-                            else:
-                                current_game_state.current_alerts.append("Cannot bulldoze out of bounds.")
-                                current_game_state.current_tool = None # Deactivate
-                        elif current_game_state.selected_building_type:
-                            building_key = current_game_state.selected_building_type
-                            building_data = config.BUILDING_TYPES[building_key]
-                            building_cost = building_data.get("cost", 0)
-
-                            if not current_game_state.is_building_unlocked(building_key):
-                                msg = f"{building_data['ui_name']} is Locked!"
-                                print(msg)
-                                sound_manager_instance.play_sound("alert_warning")
-                                current_game_state.current_alerts.append(msg)
-                            elif current_game_state.credits < building_cost:
-                                msg = "Insufficient Credits!"
-                                print(msg)
-                                sound_manager_instance.play_sound("insufficient_credits")
-                                current_game_state.current_alerts.append(msg)
-
-                            # Multi-tile placement check
-                            else:
-                                can_place = True
-                                building_w = building_data.get("width_tiles", 1)
-                                building_h = building_data.get("height_tiles", 1)
-
-                                if not (0 <= grid_x < config.GRID_WIDTH - (building_w -1) and \
-                                        0 <= grid_y < config.GRID_HEIGHT - (building_h -1)):
-                                    can_place = False
-                                    msg = "Out of Bounds (multi-tile)!"
-                                else:
-                                    for r_offset in range(building_h):
-                                        for c_offset in range(building_w):
-                                            if current_game_state.grid[grid_y + r_offset][grid_x + c_offset] is not None:
-                                                can_place = False; break
-                                        if not can_place: break
-
-                                if not can_place:
-                                    if msg == "": msg = "Tile Occupied (multi-tile)!" # Default if not set by bounds check
-                                    print(msg)
-                                    sound_manager_instance.play_sound("alert_warning")
-                                    current_game_state.current_alerts.append(msg)
-                                else: # All checks passed, place building
-                                    new_building = buildings.Building(building_key, config.BUILDING_TYPES, grid_x, grid_y, config.TILE_SIZE)
-                                    current_game_state.add_building(new_building, grid_x, grid_y) # GameState.add_building now handles multi-tile grid marking
-                                    sound_manager_instance.play_sound("building_place")
-                                    current_game_state.current_alerts.append(f"{new_building.ui_name} Placed.")
-                                    current_game_state.selected_building_type = None # Deselect after placement
-
-                        else: # No building selected, try to select an existing one or deselect all
-                            current_game_state.selected_building_instance = None # Clear detailed selection first
-                            clicked_b_on_grid = None
-                            if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
-                                clicked_b_on_grid = current_game_state.grid[grid_y][grid_x]
-
-                            previously_selected_building_on_map = any(b.is_selected for b in current_game_state.buildings)
-
-                            for b in current_game_state.buildings: # Deselect all first
-                                b.is_selected = False
-
-                            if clicked_b_on_grid:
-                                clicked_b_on_grid.is_selected = True
-                                current_game_state.selected_building_instance = clicked_b_on_grid # Store instance for detailed UI
-                                print(f"Selected: {clicked_b_on_grid.ui_name} at ({clicked_b_on_grid.grid_x}, {clicked_b_on_grid.grid_y})")
-                                sound_manager_instance.play_sound("ui_click")
-                            elif previously_selected_building_on_map : # Clicked empty space after something was selected
-                                sound_manager_instance.play_sound("ui_click")
-                                current_game_state.selected_building_instance = None
-
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+                # If menu is NOT visible, and a tool/selection is active, clear it first.
+                if not ui_manager.escape_menu_visible:
                     if current_game_state.current_tool == "bulldozer":
                         current_game_state.current_tool = None
                         sound_manager_instance.play_sound("ui_click")
-                        print("Cleared bulldozer tool selection.")
+                        print("Cleared bulldozer tool selection via Esc.")
+                        continue # Consumed Esc for this purpose
                     elif current_game_state.selected_building_type:
-                        current_game_state.selected_building_type = None # Deselect building type
+                        current_game_state.selected_building_type = None
                         sound_manager_instance.play_sound("ui_click")
-                        print("Cleared building selection.")
-                    # Potentially add more ESCAPE functionalities (e.g. close menu, pause game)
-                # Camera movement
-                if event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                    camera_offset_x -= camera_speed
-                if event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                    camera_offset_x += camera_speed
-                if event.key == pygame.K_UP or event.key == pygame.K_w:
-                    camera_offset_y -= camera_speed
-                if event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    camera_offset_y += camera_speed
+                        print("Cleared building selection via Esc.")
+                        continue # Consumed Esc for this purpose
 
-                # Clamp camera
-                max_offset_x = (config.GRID_WIDTH * config.TILE_SIZE) - config.SCREEN_WIDTH + ui_manager.panels["build_panel"].rect.width
-                max_offset_y = (config.GRID_HEIGHT * config.TILE_SIZE) - config.SCREEN_HEIGHT + config.UI_PANEL_HEIGHT
-                camera_offset_x = max(0, min(camera_offset_x, max_offset_x if max_offset_x > 0 else 0))
-                camera_offset_y = max(0, min(camera_offset_y, max_offset_y if max_offset_y > 0 else 0))
+                # If no tool/selection was active, or if menu was already visible, toggle menu.
+                ui_manager.toggle_escape_menu()
+                # The pause/unpause logic is handled below based on ui_manager.escape_menu_visible
+                continue # Event handled by toggling menu
+
+            # --- UI Event Handling ---
+            # The ui_manager.handle_event now also considers the escape menu state.
+            # If escape menu is visible, it consumes events.
+            # If resume is clicked, toggle_escape_menu is called from within button's action.
+            if ui_manager.handle_event(event, current_game_state):
+                # If a UI button was clicked (and it's not the resume button causing a pause state change here)
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Check if the click was on an actual button widget within the active panel
+                    clicked_on_button = False
+                    active_panel_name = "escape_menu_panel" if ui_manager.escape_menu_visible else None
+
+                    if not active_panel_name: # Check other panels if escape menu not active
+                        for panel_name, panel_obj in ui_manager.panels.items():
+                            if panel_name == "escape_menu_panel": continue
+                            if hasattr(panel_obj, 'is_visible') and not panel_obj.is_visible: continue
+                            if panel_obj.rect.collidepoint(mouse_pos):
+                                active_panel_name = panel_name
+                                break
+
+                    if active_panel_name and active_panel_name in ui_manager.panels:
+                        panel_to_check = ui_manager.panels[active_panel_name]
+                        if panel_to_check.rect.collidepoint(mouse_pos):
+                             for elem in panel_to_check.elements:
+                                if elem["type"] == "button" and elem["widget"].rect.collidepoint(mouse_pos):
+                                    if elem["widget"].action:
+                                        clicked_on_button = True
+                                        break
+                    if clicked_on_button:
+                        sound_manager_instance.play_sound("ui_click")
+                continue # UI handled the event, or consumed it if menu was open.
+
+            # --- Game World Interaction (only if not paused and not handled by UI) ---
+            if not game_paused:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1: # Left click for game world
+                        on_world = True
+                        # Check if click was on any visible UI panel (status bar, build menu if open)
+                        for panel_key, panel_obj in ui_manager.panels.items():
+                            if panel_key == "escape_menu_panel": continue # Already handled
+                            if not (hasattr(panel_obj, 'is_visible') and not panel_obj.is_visible): # if visible
+                                if panel_obj.rect.collidepoint(mouse_pos):
+                                    on_world = False; break
+
+                        if on_world:
+                            world_x = mouse_pos[0] + camera_offset_x
+                            world_y = mouse_pos[1] + camera_offset_y
+                            grid_x, grid_y = world_x // config.TILE_SIZE, world_y // config.TILE_SIZE
+
+                            if current_game_state.current_tool == "bulldozer":
+                                if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
+                                    building_to_remove = current_game_state.grid[grid_y][grid_x]
+                                    if building_to_remove is not None:
+                                        current_game_state.remove_building(grid_x, grid_y)
+                                        sound_manager_instance.play_sound("alert_warning")
+                                        current_game_state.current_alerts.append(f"{building_to_remove.ui_name} Demolished.")
+                                    else:
+                                        current_game_state.current_alerts.append("Nothing to bulldoze.")
+                                    current_game_state.current_tool = None
+                                else:
+                                    current_game_state.current_alerts.append("Cannot bulldoze out of bounds.")
+                                    current_game_state.current_tool = None
+                            elif current_game_state.selected_building_type:
+                                building_key = current_game_state.selected_building_type
+                                building_data = config.BUILDING_TYPES[building_key]
+                                building_cost = building_data.get("cost", 0)
+
+                                if not current_game_state.is_building_unlocked(building_key):
+                                    msg = f"{building_data['ui_name']} is Locked!"
+                                    sound_manager_instance.play_sound("alert_warning")
+                                    current_game_state.current_alerts.append(msg)
+                                elif current_game_state.credits < building_cost:
+                                    msg = "Insufficient Credits!"
+                                    sound_manager_instance.play_sound("error_credits") # Changed sound
+                                    current_game_state.current_alerts.append(msg)
+                                else:
+                                    can_place = True
+                                    building_w = building_data.get("width_tiles", 1)
+                                    building_h = building_data.get("height_tiles", 1)
+                                    msg = "" # Clear previous message
+
+                                    if not (0 <= grid_x < config.GRID_WIDTH - (building_w -1) and \
+                                            0 <= grid_y < config.GRID_HEIGHT - (building_h -1)):
+                                        can_place = False
+                                        msg = "Out of Bounds!" # Simplified message
+                                    else:
+                                        for r_offset in range(building_h):
+                                            for c_offset in range(building_w):
+                                                if current_game_state.grid[grid_y + r_offset][grid_x + c_offset] is not None:
+                                                    can_place = False; msg = "Tile Occupied!"; break
+                                            if not can_place: break
+
+                                    if not can_place:
+                                        sound_manager_instance.play_sound("alert_warning")
+                                        current_game_state.current_alerts.append(msg)
+                                    else:
+                                        new_building = buildings.Building(building_key, config.BUILDING_TYPES, grid_x, grid_y, config.TILE_SIZE)
+                                        current_game_state.add_building(new_building, grid_x, grid_y)
+                                        sound_manager_instance.play_sound("building_placed") # Corrected sound
+                                        current_game_state.current_alerts.append(f"{new_building.ui_name} Placed.")
+                                        current_game_state.selected_building_type = None
+                            else: # No tool or building selected
+                                current_game_state.selected_building_instance = None
+                                clicked_b_on_grid = None
+                                if 0 <= grid_x < config.GRID_WIDTH and 0 <= grid_y < config.GRID_HEIGHT:
+                                    clicked_b_on_grid = current_game_state.grid[grid_y][grid_x]
+
+                                previously_selected_building_on_map = any(b.is_selected for b in current_game_state.buildings if b is not None)
+                                for b in current_game_state.buildings:
+                                    if b: b.is_selected = False
+
+                                if clicked_b_on_grid:
+                                    clicked_b_on_grid.is_selected = True
+                                    current_game_state.selected_building_instance = clicked_b_on_grid
+                                    sound_manager_instance.play_sound("ui_click")
+                                elif previously_selected_building_on_map :
+                                    sound_manager_instance.play_sound("ui_click")
+                                    current_game_state.selected_building_instance = None
+
+                # Camera movement (only if not paused)
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT or event.key == pygame.K_a:
+                        camera_offset_x -= camera_speed
+                    if event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+                        camera_offset_x += camera_speed
+                    if event.key == pygame.K_UP or event.key == pygame.K_w:
+                        camera_offset_y -= camera_speed
+                    if event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        camera_offset_y += camera_speed
+
+                    # Clamp camera
+                    # Calculate max_offset_x considering the build panel width if it's visible
+                    current_build_panel_width = 0
+                    if "build_panel" in ui_manager.panels and ui_manager.panels["build_panel"].is_visible:
+                         current_build_panel_width = ui_manager.panels["build_panel"].rect.width
+
+                    max_offset_x = (config.GRID_WIDTH * config.TILE_SIZE) - config.SCREEN_WIDTH + current_build_panel_width
+                    max_offset_y = (config.GRID_HEIGHT * config.TILE_SIZE) - config.SCREEN_HEIGHT + config.UI_PANEL_HEIGHT # Status panel height
+                    camera_offset_x = max(0, min(camera_offset_x, max_offset_x if max_offset_x > 0 else 0))
+                    camera_offset_y = max(0, min(camera_offset_y, max_offset_y if max_offset_y > 0 else 0))
+
+        if not running: break # Exit main loop if running is set to False (e.g., by quit button)
+
+        # --- Pause State Management ---
+        game_paused = ui_manager.escape_menu_visible
+        if game_paused and not was_paused: # Game just paused
+            previous_time_multiplier = current_game_state.time_multiplier
+            current_game_state.time_multiplier = 0
+            print("Game Paused. Time multiplier set to 0.")
+            ui_manager.set_time_control_button_actions(current_game_state) # Refresh time buttons to show pause
+        elif not game_paused and was_paused: # Game just unpaused
+            current_game_state.time_multiplier = previous_time_multiplier
+            print(f"Game Unpaused. Time multiplier restored to {previous_time_multiplier}.")
+            ui_manager.set_time_control_button_actions(current_game_state) # Refresh time buttons
 
 
-        # Game Logic Update
-        current_game_state.tick() # Update resources, time, rank, etc.
-        # Building updates are now called within game_state.tick() to ensure correct order
-        # for power calculation and resource generation based on operational status.
+        # --- Game Logic Update (if not paused) ---
+        if not game_paused:
+            current_game_state.tick()
+            if current_game_state.game_time % (config.FPS // 2) == 0:
+                ui_manager.set_build_panel_button_actions(current_game_state)
+        else: # If paused, ensure game time does not advance via tick
+            # We might still want some minimal updates for UI animations if any, but GameState.tick() is the core logic.
+            # For now, GameState.tick() is fully skipped.
+            # We still need to update the clock for FPS display if it's part of GameState.
+             if current_game_state.clock: # Ensure clock is still ticked for FPS display purposes
+                current_game_state.clock.tick(config.FPS)
 
-        # Refresh build panel buttons based on current game state (unlocks, affordability)
-        # This is a bit inefficient to do every frame, could be event-driven or on a timer.
-        # For now, for simplicity:
-        if current_game_state.game_time % (config.FPS // 2) == 0: # Update twice per second
-            ui_manager.set_build_panel_button_actions(current_game_state)
 
-
-        # Rendering
+        # --- Rendering ---
         screen.fill(config.COLOR_BLACK)
 
-        # Draw Grid (optional, can be resource intensive for large grids)
-        # rendering.draw_grid(screen, config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_SIZE, (30,30,30))
+        if not game_paused: # Only render game world if not paused
+            rendering.draw_resource_nodes(screen, current_game_state, config.TILE_SIZE,
+                                          camera_offset_x, camera_offset_y, config)
+            building_colors = {
+                "default": config.COLOR_GREEN, "selected": config.COLOR_AMBER, "inactive": (80,80,80)
+            }
+            for building_obj in current_game_state.buildings:
+                if building_obj: building_obj.draw_wireframe(screen, building_colors, camera_offset_x, camera_offset_y)
 
-        # Draw Resource Nodes first, so they are under buildings
-        rendering.draw_resource_nodes(screen, current_game_state, config.TILE_SIZE,
-                                      camera_offset_x, camera_offset_y, config)
-
-        # Draw Buildings (respecting camera offset)
-        building_colors = {
-            "default": config.COLOR_GREEN,
-            "selected": config.COLOR_AMBER,
-            "inactive": (80,80,80)
-        }
-        for building_obj in current_game_state.buildings:
-            # building_obj.draw(screen, config.COLOR_GREEN, camera_offset_x, camera_offset_y)
-            building_obj.draw_wireframe(screen, building_colors, camera_offset_x, camera_offset_y)
-
-        # Draw UI (drawn on top, not affected by camera)
+        # Draw UI (always drawn, includes escape menu if active)
         ui_manager.draw(screen, current_game_state)
 
-        # If a building type is selected for placement, draw a preview
-        if current_game_state.selected_building_type:
+        # Preview rendering (only if not paused and a building is selected)
+        if not game_paused and current_game_state.selected_building_type:
             mouse_x, mouse_y = pygame.mouse.get_pos()
             # Snap to grid for preview
             preview_grid_x = (mouse_x + camera_offset_x) // config.TILE_SIZE

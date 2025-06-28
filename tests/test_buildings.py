@@ -24,6 +24,7 @@ class TestBuilding(unittest.TestCase):
             GRID_WIDTH = 10
             GRID_HEIGHT = 10
             TILE_SIZE = 16 # Crucial for get_rect()
+            DEFAULT_TIME_MULTIPLIER = 1 # Added for GameState init
             BUILDING_TYPES = {
                 "COMMAND_CENTER": {"cost": 500, "power_draw": 10, "ui_name": "Command Base"},
                 "HAB_DOME": {"cost": 100, "power_draw": 2, "capacity": 10, "ui_name": "Hab Dome"},
