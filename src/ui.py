@@ -339,58 +339,58 @@ class UIManager:
         """Updates build panel buttons based on game_state (unlocks, affordability)."""
         build_panel = self.panels.get("build_panel")
         if build_panel:
-        # Optimized: Clear and re-add only if necessary or if content changes significantly.
-        # For now, full refresh is simpler.
+            # Optimized: Clear and re-add only if necessary or if content changes significantly.
+            # For now, full refresh is simpler.
             current_y = self.config.UI_PADDING
-        build_panel.elements = [] # Clear old buttons/labels
+            build_panel.elements = [] # Clear old buttons/labels
 
             build_panel.add_text_label(lambda gs: "BUILD MENU (Rank: "+gs.city_rank+")", (self.config.UI_PADDING, current_y), self.config.UI_TEXT_COLOR)
             current_y += 25
 
             # --- Add Bulldozer Button ---
-        def create_bulldozer_action(gs_ref_inner): # Renamed to avoid conflict
+            def create_bulldozer_action(gs_ref_inner): # Renamed to avoid conflict
                 def action_func():
-                gs_ref_inner.selected_building_type = None
-                gs_ref_inner.current_tool = "bulldozer"
+                    gs_ref_inner.selected_building_type = None
+                    gs_ref_inner.current_tool = "bulldozer"
                     print("UI: Selected BULLDOZER tool.")
-                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                    gs_ref_inner.sound_manager_instance.play_sound("ui_click")
+                    if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                        gs_ref_inner.sound_manager_instance.play_sound("ui_click")
                 return action_func
 
             bulldozer_action = create_bulldozer_action(game_state_ref)
             bulldozer_button_text = "BULLDOZE"
-        # Determine color based on current tool
+            # Determine color based on current tool
             bulldozer_color = self.config.COLOR_RED if game_state_ref.current_tool == "bulldozer" else self.config.COLOR_BLUE
 
             button_widget = build_panel.add_button(
                 self.config.UI_PADDING, current_y,
                 build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-            bulldozer_button_text, bulldozer_action
+                bulldozer_button_text, bulldozer_action
             )
-        button_widget.button_color = bulldozer_color # Apply dynamic color
+            button_widget.button_color = bulldozer_color # Apply dynamic color
             current_y += 35
             # --- End Bulldozer Button ---
 
-        for b_key, b_data in self.config.BUILDING_TYPES.items():
+            for b_key, b_data in self.config.BUILDING_TYPES.items():
                 if game_state_ref.is_building_unlocked(b_key):
-                def create_build_action_with_gs(key_to_build, gs_ref_inner):
+                    def create_build_action_with_gs(key_to_build, gs_ref_inner):
                         def action_func():
-                        gs_ref_inner.current_tool = None # Clear bulldozer
-                        if not gs_ref_inner.is_building_unlocked(key_to_build):
+                            gs_ref_inner.current_tool = None # Clear bulldozer
+                            if not gs_ref_inner.is_building_unlocked(key_to_build):
                                 print(f"UI: {b_data['ui_name']} is locked.")
-                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                                 gs_ref_inner.sound_manager_instance.play_sound("alert_warning")
+                                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                     gs_ref_inner.sound_manager_instance.play_sound("alert_warning")
                                 return
-                        if gs_ref_inner.credits >= b_data.get('cost', 0):
-                            gs_ref_inner.selected_building_type = key_to_build
+                            if gs_ref_inner.credits >= b_data.get('cost', 0):
+                                gs_ref_inner.selected_building_type = key_to_build
                                 print(f"UI: Selected {key_to_build} for building.")
-                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                                 gs_ref_inner.sound_manager_instance.play_sound("ui_click")
+                                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                     gs_ref_inner.sound_manager_instance.play_sound("ui_click")
                             else:
                                 print(f"UI: Cannot select {key_to_build}, not enough credits.")
-                            gs_ref_inner.current_alerts.append(f"Need {b_data['cost']} CR for {b_data['ui_name']}")
-                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                                 gs_ref_inner.sound_manager_instance.play_sound("error_credits")
+                                gs_ref_inner.current_alerts.append(f"Need {b_data['cost']} CR for {b_data['ui_name']}")
+                                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                     gs_ref_inner.sound_manager_instance.play_sound("error_credits")
                         return action_func
 
                     action = create_build_action_with_gs(b_key, game_state_ref)
@@ -399,28 +399,28 @@ class UIManager:
                     text_color = self.config.UI_TEXT_COLOR
 
                     if game_state_ref.selected_building_type == b_key:
-                    current_button_color = self.config.COLOR_AMBER
+                        current_button_color = self.config.COLOR_AMBER
                     if game_state_ref.credits < b_data.get('cost',0):
-                    current_button_color = (60,60,60)
+                        current_button_color = (60,60,60)
                         text_color = (150,150,150)
 
-                button_widget_instance = build_panel.add_button(
+                    button_widget_instance = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
                         build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-                    button_text, action
+                        button_text, action
                     )
-                button_widget_instance.button_color = current_button_color
-                button_widget_instance.text_color = text_color
+                    button_widget_instance.button_color = current_button_color
+                    button_widget_instance.text_color = text_color
                     current_y += 35
-            else: # Locked building
+                else: # Locked building
                     button_text = f"{b_data['ui_name']} (Locked)"
-                locked_button_widget = build_panel.add_button(
+                    locked_button_widget = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
                         build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-                    button_text, None # No action
+                        button_text, None # No action
                     )
-                locked_button_widget.button_color = (30,30,30)
-                locked_button_widget.text_color = (100,100,100)
+                    locked_button_widget.button_color = (30,30,30)
+                    locked_button_widget.text_color = (100,100,100)
                     current_y += 35
 
     def set_time_control_button_actions(self, game_state_ref):
