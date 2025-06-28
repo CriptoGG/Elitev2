@@ -81,15 +81,16 @@ def game_loop():
         # Pass ui_manager to the load_game function via lambda
         ui_manager.load_button.action = lambda: load_game(current_game_state, ui_manager)
 
-    # This ensures button actions in the UI can modify the game state (for build panel)
-    ui_manager.set_build_panel_button_actions(current_game_state)
+    # Initialize UIManager with game_state and function references
+    ui_manager.set_initial_game_state_ref(current_game_state)
+    ui_manager.save_game_func = save_game # Pass the actual function
+    ui_manager.load_game_func = load_game # Pass the actual function
 
-    # Add sound_manager to game_state so UI actions can trigger sounds through it
+    # Add sound_manager to game_state so UI actions can trigger sounds through it (if needed by actions)
     current_game_state.sound_manager_instance = sound_manager_instance
 
-    # Setup time control buttons
-    ui_manager.set_time_control_button_actions(current_game_state)
-
+    # Old calls to set_build_panel_button_actions and set_time_control_button_actions are no longer needed here
+    # as panel elements are populated via set_initial_game_state_ref and handle_resize.
 
     clock = pygame.time.Clock() # For FPS control
     current_game_state.clock = clock # Give game_state access to the clock for FPS display
@@ -104,9 +105,28 @@ def game_loop():
     print("Starting game loop...")
     while running:
         # Event Handling
+        # Keep track of current screen dimensions
+        current_screen_width, current_screen_height = screen.get_size()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+            elif event.type == pygame.VIDEORESIZE:
+                current_screen_width = event.w
+                current_screen_height = event.h
+                # Ensure minimum dimensions from config (if defined, otherwise use some defaults)
+                min_w = getattr(config, "MIN_SCREEN_WIDTH", 800)
+                min_h = getattr(config, "MIN_SCREEN_HEIGHT", 600)
+                current_screen_width = max(current_screen_width, min_w)
+                current_screen_height = max(current_screen_height, min_h)
+
+                screen = pygame.display.set_mode((current_screen_width, current_screen_height), pygame.RESIZABLE)
+
+                if hasattr(ui_manager, 'handle_resize'):
+                    ui_manager.handle_resize(current_screen_width, current_screen_height)
+                print(f"Window resized to: {current_screen_width}x{current_screen_height}")
+
 
             # Pass event to UI Manager first
             # --- Event Handling ---
@@ -261,8 +281,22 @@ def game_loop():
                     camera_offset_y += camera_speed
 
                 # Clamp camera
-                max_offset_x = (config.GRID_WIDTH * config.TILE_SIZE) - config.SCREEN_WIDTH + ui_manager.panels["build_panel"].rect.width
-                max_offset_y = (config.GRID_HEIGHT * config.TILE_SIZE) - config.SCREEN_HEIGHT + config.UI_PANEL_HEIGHT
+                # Use current screen dimensions and panel dimensions for clamping
+                effective_screen_width = current_screen_width
+                effective_screen_height = current_screen_height
+
+                build_panel_width = 0
+                if "build_panel" in ui_manager.panels and ui_manager.panels["build_panel"].is_visible:
+                    build_panel_width = ui_manager.panels["build_panel"].rect.width
+
+                status_panel_height = 0
+                if "status_panel" in ui_manager.panels and ui_manager.panels["status_panel"].is_visible:
+                    status_panel_height = ui_manager.panels["status_panel"].rect.height
+
+
+                max_offset_x = (config.GRID_WIDTH * config.TILE_SIZE) - effective_screen_width + build_panel_width
+                max_offset_y = (config.GRID_HEIGHT * config.TILE_SIZE) - effective_screen_height + status_panel_height
+
                 camera_offset_x = max(0, min(camera_offset_x, max_offset_x if max_offset_x > 0 else 0))
                 camera_offset_y = max(0, min(camera_offset_y, max_offset_y if max_offset_y > 0 else 0))
 
@@ -272,11 +306,10 @@ def game_loop():
         # Building updates are now called within game_state.tick() to ensure correct order
         # for power calculation and resource generation based on operational status.
 
-        # Refresh build panel buttons based on current game state (unlocks, affordability)
-        # This is a bit inefficient to do every frame, could be event-driven or on a timer.
-        # For now, for simplicity:
-        if current_game_state.game_time % (config.FPS // 2) == 0: # Update twice per second
-            ui_manager.set_build_panel_button_actions(current_game_state)
+        # Refresh UI elements based on current game state (unlocks, affordability, selection highlights)
+        # This ensures button colors, text, etc., are up-to-date.
+        if current_game_state.game_time % (config.FPS // 4) == 0: # Update ~4 times per second
+            ui_manager.refresh_panel_elements_for_state_change()
 
 
         # Rendering
