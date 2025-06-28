@@ -22,13 +22,32 @@ class Button:
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
 
+    def update(self):
+        # Continuously update hover state based on current mouse position
+        current_mouse_pos = pygame.mouse.get_pos()
+        if self.rect.collidepoint(current_mouse_pos):
+            self.is_hovered = True
+        else:
+            self.is_hovered = False
+
     def handle_event(self, event):
+        # MOUSEMOTION event still useful for immediate feedback if desired,
+        # but update() handles the general case.
+        # We can even remove the MOUSEMOTION part of handle_event if update() is called every frame before event handling.
+        # For now, leave it, as it doesn't harm.
         if event.type == pygame.MOUSEMOTION:
             self.is_hovered = self.rect.collidepoint(event.pos)
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1 and self.is_hovered and self.action:
-                self.action()
-                return True # Event handled
+            if event.button == 1 and self.action:
+                # Check collision directly at the moment of click
+                if self.rect.collidepoint(event.pos):
+                    self.is_hovered = True # Ensure hover state is true if clicked
+                    self.action()
+                    return True # Event handled
+                else:
+                    # If a click happened but not on this button, and the mouse
+                    # hadn't moved away, ensure its hover state is false.
+                    self.is_hovered = False
         return False
 
 
@@ -74,6 +93,7 @@ class UIPanel:
                 # Position is relative to the panel's top-left corner
                 surface.blit(text_surf, (self.rect.x + elem["pos"][0], self.rect.y + elem["pos"][1]))
             elif elem["type"] == "button":
+                elem["widget"].update() # Update hover state
                 elem["widget"].draw(surface)
 
 
