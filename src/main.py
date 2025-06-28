@@ -84,6 +84,12 @@ def game_loop():
     # This ensures button actions in the UI can modify the game state (for build panel)
     ui_manager.set_build_panel_button_actions(current_game_state)
 
+    # Add sound_manager to game_state so UI actions can trigger sounds through it
+    current_game_state.sound_manager_instance = sound_manager_instance
+
+    # Setup time control buttons
+    ui_manager.set_time_control_button_actions(current_game_state)
+
 
     clock = pygame.time.Clock() # For FPS control
     current_game_state.clock = clock # Give game_state access to the clock for FPS display

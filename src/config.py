@@ -42,7 +42,7 @@ GRID_HEIGHT = 50 # tiles
 # Unlock conditions: "pop": min_population, "rank": "min_rank_name", "tech": "tech_id"
 BUILDING_TYPES = {
     "COMMAND_CENTER": {"cost": 5000, "power_draw": 10, "ui_name": "Command Center", "unlock_conditions": {}}, # Always available
-    "HAB_DOME": {"cost": 500, "power_draw": 2, "capacity": 10, "ui_name": "Habitation Dome", "unlock_conditions": {}}, # Always available
+    "HAB_DOME": {"cost": 500, "power_draw": 2, "capacity": 10, "ui_name": "Habitation Dome", "unlock_conditions": {}, "income": 10}, # Always available, generates 10 credits per second
     "SOLAR_PANEL_ARRAY": {"cost": 1000, "power_gen": 20, "ui_name": "Solar Array", "unlock_conditions": {}}, # Always available
     "POWER_CONDUIT": {"cost": 50, "power_draw": 0, "ui_name": "Power Conduit", "unlock_conditions": {}}, # Always available
     "RESOURCE_EXTRACTOR": {
@@ -165,5 +165,9 @@ UI_PADDING = 10
 
 # Game version
 GAME_VERSION = "0.0.1 Alpha"
+
+# Time Control
+DEFAULT_TIME_MULTIPLIER = 1
+TIME_MULTIPLIER_OPTIONS = [1, 2, 5, 10] # Added 10x
 
 print("Configuration loaded.")

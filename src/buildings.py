@@ -13,6 +13,7 @@ class Building:
         self.power_draw = self.config.get("power_draw", 0)
         self.power_gen = self.config.get("power_gen", 0)
         self.ui_name = self.config.get("ui_name", "Building")
+        self.income = self.config.get("income", 0) # Added income attribute
 
         self.grid_x = grid_x
         self.grid_y = grid_y
@@ -80,6 +81,17 @@ class Building:
         if not self.is_operational:
             return # Don't do any work if not operational
 
+        # Income generation (scaled by time_multiplier in GameState.tick)
+        # For now, income is per second, so we check if a second has passed.
+        # This will be adjusted when GameState.tick handles the multiplier.
+        if self.income > 0 and game_state.game_time % game_state.config.FPS == 0: # Check once per real-time second
+            # Income per second is scaled by the time multiplier.
+            actual_income_this_second = self.income * game_state.time_multiplier
+            game_state.credits += actual_income_this_second
+            # if actual_income_this_second > 0:
+                # print(f"{self.ui_name} generated {actual_income_this_second} credits (Rate: {self.income}, Multi: {game_state.time_multiplier}x). Total: {game_state.credits}")
+
+
         # Specific building logic
         if self.type_key == "HAB_DOME":
             # Population capacity is handled by game_state.update_resources_and_population
@@ -103,10 +115,12 @@ class Building:
                 if current_node_on_tile != self.placed_on_node_type:
                     can_produce = False
 
-            if can_produce and self.resource_type and game_state.game_time % game_state.config.FPS == 0: # Produce once per second
+            if can_produce and self.resource_type and game_state.game_time % game_state.config.FPS == 0: # Produce once per real-time second
                 if self.resource_type in game_state.resources:
-                    game_state.resources[self.resource_type] += self.output_rate
-                    # print(f"{self.ui_name} produced {self.output_rate} {self.resource_type} (on node: {game_state.resource_grid[self.grid_y][self.grid_x]}). Total: {game_state.resources[self.resource_type]}")
+                    actual_production_this_second = self.output_rate * game_state.time_multiplier
+                    game_state.resources[self.resource_type] += actual_production_this_second
+                    # if actual_production_this_second > 0:
+                        # print(f"{self.ui_name} produced {actual_production_this_second} {self.resource_type} (Rate: {self.output_rate}, Multi: {game_state.time_multiplier}x). Total: {game_state.resources[self.resource_type]}")
                 else:
                     # print(f"Warning: Resource type {self.resource_type} not in game_state.resources for {self.ui_name}")
                     pass
@@ -115,19 +129,42 @@ class Building:
 
         elif self.type_key == "FUEL_REFINERY" or self.type_key == "FACTORY_PARTS": # General factory logic
             if self.input_resource and self.output_resource and self.input_amount > 0 and self.output_rate > 0:
-                self.production_timer_ticks += 1
+                # Accumulate production ticks scaled by the time multiplier
+                self.production_timer_ticks += (1 * game_state.time_multiplier)
 
                 required_ticks_for_cycle = self.cycle_time_seconds * game_state.config.FPS
+                # Note: required_ticks_for_cycle is in terms of 1x speed game ticks.
+                # Since production_timer_ticks now accumulates faster with time_multiplier,
+                # it will reach required_ticks_for_cycle sooner.
 
                 if self.production_timer_ticks >= required_ticks_for_cycle:
-                    if game_state.resources.get(self.input_resource, 0) >= self.input_amount:
-                        game_state.resources[self.input_resource] -= self.input_amount
-                        game_state.resources[self.output_resource] = game_state.resources.get(self.output_resource, 0) + self.output_rate
-                        # print(f"{self.ui_name} consumed {self.input_amount} {self.input_resource}, produced {self.output_rate} {self.output_resource}.")
-                        self.production_timer_ticks = 0 # Reset timer
-                    else:
-                        # Not enough input resources, stall timer slightly or log
-                        self.production_timer_ticks = required_ticks_for_cycle # Keep timer full so it tries next tick
+                    # How many cycles have completed? (in case of very high multiplier or long frame)
+                    num_cycles_completed = self.production_timer_ticks // required_ticks_for_cycle
+
+                    for _ in range(num_cycles_completed):
+                        if game_state.resources.get(self.input_resource, 0) >= self.input_amount:
+                            game_state.resources[self.input_resource] -= self.input_amount
+                            game_state.resources[self.output_resource] = game_state.resources.get(self.output_resource, 0) + self.output_rate
+                            # print(f"{self.ui_name} consumed {self.input_amount} {self.input_resource}, produced {self.output_rate} {self.output_resource} (Cycle due to multi: {game_state.time_multiplier}x)")
+                        else:
+                            # Not enough input resources for a cycle, break from attempting more cycles
+                            # print(f"{self.ui_name} needs {self.input_amount} of {self.input_resource} to produce. Halting further cycles this tick.")
+                            break
+
+                    # Remainder for next tick
+                    self.production_timer_ticks %= required_ticks_for_cycle
+
+                    # If we couldn't complete even one cycle due to lack of resources,
+                    # and the timer was full, we should ensure it stays full to try next frame,
+                    # but only if num_cycles_completed was 0.
+                    if num_cycles_completed == 0 and self.production_timer_ticks >= required_ticks_for_cycle: # This check might be redundant now
+                         # This case is tricky: if timer was full, but couldn't produce, it should remain full.
+                         # The modulo operation might make it small.
+                         # Let's re-evaluate: if production_timer_ticks >= required_ticks_for_cycle
+                         # and we did 0 cycles, it means we lacked resources.
+                         # The timer should ideally be "stalled" at required_ticks_for_cycle.
+                        if game_state.resources.get(self.input_resource, 0) < self.input_amount:
+                             self.production_timer_ticks = required_ticks_for_cycle # Stall timer
                         # print(f"{self.ui_name} needs {self.input_amount} of {self.input_resource} to produce.")
                         pass
 

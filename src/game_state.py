@@ -24,6 +24,7 @@ class GameState:
         self.unlocked_technologies = set() # e.g., {"basic_manufacturing"}
         self.current_alerts = [] # List of active alerts/events
         self.clock = None # Will be set by main to get FPS
+        self.time_multiplier = config.DEFAULT_TIME_MULTIPLIER
 
         # Resource node map
         self.resource_grid = [[None for _ in range(config.GRID_WIDTH)] for _ in range(config.GRID_HEIGHT)]
@@ -181,11 +182,38 @@ class GameState:
 
         # Simple population growth/decline based on capacity
         # More complex logic can be added (happiness, resources needed for pop, etc.)
+
+        # Calculate effective ticks based on time_multiplier for less frequent events
+        # For events that should happen 'per simulated second', we adjust the modulo.
+        # Example: Growth every 5 simulated seconds.
+        # If FPS is 60, and multiplier is 1, event is every 300 ticks.
+        # If multiplier is 2, event is effectively every 150 screen ticks (still 5 simulated seconds).
+
+        # Population growth/decline should happen more frequently at higher speeds.
+        # We can simulate this by checking more often or by increasing the amount of change.
+        # Let's try increasing the frequency of checks.
+
+        # Effective number of "game ticks" that have passed this screen tick for simulation purposes
+        simulated_ticks_this_frame = 1 * self.time_multiplier
+
+        # We need a way to accumulate "simulation time" for events that don't happen every frame.
+        # For simplicity, let's adjust the modulo for timed events.
+        # The game_time % (interval) == 0 check should now be game_time % (interval / time_multiplier) == 0
+        # Or, more robustly, use a counter that accumulates time_multiplier each tick.
+
+        # Let's adjust the interval directly.
+        # If an event happens every X seconds (X * FPS ticks at 1x speed),
+        # it should happen every X seconds / time_multiplier ( (X * FPS) / time_multiplier ticks at Nx speed).
+        # Ensure the divisor is at least 1 to avoid division by zero if time_multiplier is fractional or very high.
+
+        pop_growth_interval_ticks = max(1, (self.config.FPS * 5) // self.time_multiplier)
+        pop_decline_interval_ticks = max(1, (self.config.FPS * 2) // self.time_multiplier)
+
         if self.population < current_population_capacity:
-            if self.game_time % (self.config.FPS * 5) == 0: # Grow every 5 seconds approx
+            if self.game_time % pop_growth_interval_ticks == 0:
                 self.population = min(self.population + 1, current_population_capacity)
         elif self.population > current_population_capacity:
-             if self.game_time % (self.config.FPS * 2) == 0: # Decline faster if over capacity
+             if self.game_time % pop_decline_interval_ticks == 0:
                 self.population = max(0, self.population -1)
 
 
@@ -194,21 +222,28 @@ class GameState:
         return self.power_capacity >= self.power_demand
 
     def tick(self):
-        """Advances game time by one step and updates game state."""
+        """Advances game time by one step (scaled by time_multiplier) and updates game state."""
+        # The core game_time still increments by 1 screen refresh tick.
+        # The time_multiplier will scale the *effects* of game actions that depend on time.
         self.game_time += 1
 
-        # Building updates should happen first, they might change their operational status
+        # Building updates should happen first, they might change their operational status.
+        # The building.update() method itself will need to be aware of the time_multiplier
+        # for production rates, income generation, etc.
         for building in self.buildings:
             building.update(self) # This will set building.is_operational
 
         self.update_power_balance() # Recalculate power based on new operational states
 
         # Now that operational states and power are stable for the tick, update resources
-        self.update_resources_and_population()
-        self.check_for_rank_up() # Check rank regularly as pop also changes
+        self.update_resources_and_population() # This method will also need to consider time_multiplier
+        self.check_for_rank_up() # Check rank regularly
 
-        if self.game_time % (self.config.FPS * 1) == 0: # Log every second
-             # print(f"Tick {self.game_time}. Credits: {self.credits}. Pop: {self.population}. Rank: {self.city_rank}. Power: {self.power_capacity}/{self.power_demand}. Resources: {self.resources}")
+        # Logging frequency can remain based on raw game_time ticks (frames)
+        # Or it could be adjusted if we want logs per simulated second.
+        # For now, let's keep it simple.
+        if self.game_time % (self.config.FPS * 1) == 0: # Log every actual second of screen time
+             # print(f"Tick {self.game_time}. Credits: {self.credits}. Pop: {self.population}. Multi: {self.time_multiplier}x. Rank: {self.city_rank}. Power: {self.power_capacity}/{self.power_demand}. Resources: {self.resources}")
              pass
 
     def is_building_unlocked(self, building_key):
