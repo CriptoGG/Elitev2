@@ -93,7 +93,38 @@ class UIPanel:
                 # Position is relative to the panel's top-left corner
                 surface.blit(text_surf, (self.rect.x + elem["pos"][0], self.rect.y + elem["pos"][1]))
             elif elem["type"] == "button":
-                elem["widget"].update() # Update hover state
+                # Only update hover state for the active panel (escape menu) or if game is not paused.
+                # The UIManager should pass its `escape_menu_visible` state or a general `is_game_paused` flag.
+                # For now, we'll assume game_state might hold a reference to ui_manager or a pause flag.
+                # A simpler way is to pass a `is_active_panel` flag to draw().
+                # Let's refine this by allowing UIPanel.draw to know if it's the context for active interaction.
+                # However, an even simpler fix is in UIManager.draw for now. Button.update() itself is generic.
+                # The decision to call update() can be made by the UIManager or UIPanel.
+                # Let's assume for now that UIManager controls this.
+                # So, if a panel is told to draw while game is paused, its buttons shouldn't update hover unless it's the pause menu itself.
+                # This logic is better placed in UIManager.draw or by passing a flag to UIPanel.draw
+
+                # For the refinement: UIPanel.draw will be modified to accept `is_interactive`
+                #elem["widget"].update() # Original: Update hover state always
+                elem["widget"].draw(surface) # Draw is always needed
+
+
+    def draw(self, surface, game_state, is_interactive_panel=True): # Added is_interactive_panel
+        # Draw panel background
+        pygame.draw.rect(surface, self.bg_color, self.rect)
+        pygame.draw.rect(surface, self.border_color, self.rect, 1) # Border
+
+        # Draw elements
+        for elem in self.elements:
+            if elem["type"] == "text":
+                text_to_render = elem["text_func"](game_state) # Get current text from function
+                text_surf = self.font.render(text_to_render, True, elem["color"])
+                surface.blit(text_surf, (self.rect.x + elem["pos"][0], self.rect.y + elem["pos"][1]))
+            elif elem["type"] == "button":
+                if is_interactive_panel: # Only update button if its panel is interactive
+                    elem["widget"].update()
+                else: # If panel is not interactive (e.g. background panel when menu is up)
+                    elem["widget"].is_hovered = False # Explicitly turn off hover
                 elem["widget"].draw(surface)
 
 
@@ -111,7 +142,10 @@ class UIManager:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.config = config
-        self.panels = {} # e.g., {"status_panel": UIPanel(...), "build_panel": UIPanel(...)}
+        self.panels = {} # e.g., {"status_panel": UIPanel(...), "build_panel": UIPanel(...), "escape_menu_panel": UIPanel(...)}
+        self.escape_menu_visible = False
+        self.overlay_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        self.overlay_surface.fill((0, 0, 0, 128)) # Semi-transparent black overlay
 
         self._setup_default_panels()
 
@@ -130,39 +164,30 @@ class UIManager:
         status_panel.add_text_label(lambda gs: f"PWR: {gs.power_demand} / {gs.power_capacity}", (col1_x, self.config.UI_PADDING + 40), self.config.UI_TEXT_COLOR)
 
         # Column 2: Resources
-        resource_start_x = self.config.UI_PADDING + 220 # Adjusted start X for more space
+        resource_start_x = self.config.UI_PADDING + 220
         resource_y_offset = 0
-        # Define which resources to display and in what order
-        displayable_resources = [r for r in self.config.RESOURCE_TYPES if r not in []] # Show all for now
-        # SPACESHIP_FUEL will now be shown. SHIP_PARTS also shown.
-
-        max_res_per_col = 3 # Max resources to show in this column before starting a new one
-
+        displayable_resources = [r for r in self.config.RESOURCE_TYPES if r not in []]
+        max_res_per_col = 3
         num_resource_cols = (len(displayable_resources) + max_res_per_col -1) // max_res_per_col
-        resource_col_width = 160 # Width per resource column
+        resource_col_width = 160
 
         for col_idx in range(num_resource_cols):
             current_col_x = resource_start_x + (col_idx * resource_col_width)
-            resource_y_offset = 0 # Reset for each new column
+            resource_y_offset = 0
             for i in range(max_res_per_col):
                 res_idx = col_idx * max_res_per_col + i
                 if res_idx < len(displayable_resources):
                     res_type = displayable_resources[res_idx]
                     status_panel.add_text_label(
-                        # Lambda needs to capture res_type correctly for each label
                         (lambda rt: lambda gs: f"{rt.replace('_', ' ').title()}: {gs.resources.get(rt, 0)}")(res_type),
                         (current_col_x, self.config.UI_PADDING + resource_y_offset),
                         self.config.UI_TEXT_COLOR
                     )
                     resource_y_offset += 20
 
-
         # Column 3 (or last column): Game Info & Actions
-        # Adjust col3_x based on how many resource columns we have.
         col3_x = resource_start_x + (num_resource_cols * resource_col_width) + self.config.UI_PADDING
-        # Ensure col3_x is not too far left if there are few resources. Min position:
         col3_x = max(col3_x, self.screen_width - 220)
-
 
         status_panel.add_text_label(lambda gs: f"TIME: {gs.game_time // gs.config.FPS}s ({gs.time_multiplier}x)", (col3_x, self.config.UI_PADDING), self.config.UI_TEXT_COLOR)
         status_panel.add_text_label(lambda gs: f"RANK: {gs.city_rank}", (col3_x, self.config.UI_PADDING + 20), self.config.UI_TEXT_COLOR)
@@ -170,85 +195,96 @@ class UIManager:
 
         # Time Control Buttons
         time_button_width = 30
-        time_button_y = self.config.UI_PADDING + 60 # Below FPS
-
-        def create_time_control_action(gs_ref, multiplier):
-            def action_func():
-                gs_ref.time_multiplier = multiplier
-                print(f"UI: Time multiplier set to {multiplier}x")
-                # Consider playing a sound here if UIManager has access to SoundManager
-            return action_func
-
-        # Initial position for the first time control button
+        time_button_y = self.config.UI_PADDING + 60
         current_time_button_x = col3_x
-
         for i, speed in enumerate(self.config.TIME_MULTIPLIER_OPTIONS):
-            button = status_panel.add_button(
-                current_time_button_x, time_button_y,
-                time_button_width, 25,
-                f"{speed}x",
-                create_time_control_action(None, speed) # Placeholder for game_state_ref, will be set properly later
+            status_panel.add_button(
+                current_time_button_x, time_button_y, time_button_width, 25, f"{speed}x",
+                None # Action set later by set_time_control_button_actions
             )
-            # Store these buttons if they need to be updated (e.g., to show active speed)
-            # For now, their action is static once created with the game_state_ref.
-            current_time_button_x += time_button_width + 5 # Add padding between buttons
-
-
-        # Save/Load Buttons - actions will be set in main.py
-        # Position them to avoid overlap with time controls if col3_x is constrained
-        save_load_y_offset = 0
-        if len(self.config.TIME_MULTIPLIER_OPTIONS) > 0 : save_load_y_offset = 30 # Move SL buttons down if time controls exist
-
-        self.save_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING + save_load_y_offset, 60, 25, "SAVE", None) # Action set later
-        self.load_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING + 30 + save_load_y_offset, 60, 25, "LOAD", None) # Action set later
-
+            current_time_button_x += time_button_width + 5
 
         # Alerts display
-        self.alert_display_duration = self.config.FPS * 3 # Display alert for 3 seconds
+        self.alert_display_duration = self.config.FPS * 3
         self.alert_timer = 0
-
         status_panel.add_text_label(
             lambda gs: gs.current_alerts[0] if gs.current_alerts else "",
-            (self.config.UI_PADDING, self.config.UI_PANEL_HEIGHT - self.config.UI_PADDING - self.config.UI_FONT_SIZE), # Bottom-left of panel
+            (self.config.UI_PADDING, self.config.UI_PANEL_HEIGHT - self.config.UI_PADDING - self.config.UI_FONT_SIZE),
             self.config.COLOR_AMBER
         )
-
-
         self.panels["status_panel"] = status_panel
 
         # Build Panel (e.g., right side) - can be toggled
         build_panel_width = 200
+        build_panel_height = self.screen_height - status_panel_height
         build_panel = UIPanel(self.screen_width - build_panel_width, 0,
-                              build_panel_width, self.screen_height - status_panel_height,
+                              build_panel_width, build_panel_height,
                               self.config.COLOR_BLACK, self.config.COLOR_GREEN, self.config)
-        build_panel.is_visible = True # Control visibility
-
-        # Add build buttons (example)
-        button_y = self.config.UI_PADDING
-        for i, (b_key, b_data) in enumerate(self.config.BUILDING_TYPES.items()):
-            # We need a way to tell the game what building to place.
-            # The action here will set the game_state's selected_building_type.
-            # This requires access to game_state or a callback system.
-            # For now, placeholder action.
-            def create_build_action(key_to_build): # Closure to capture b_key
-                return lambda: print(f"Selected to build: {key_to_build}") # Placeholder
-
-            build_panel.add_button(self.config.UI_PADDING, button_y,
-                                   build_panel_width - 2 * self.config.UI_PADDING, 30,
-                                   f"{b_data['ui_name']} ({b_data['cost']}CR)",
-                                   create_build_action(b_key))
-            button_y += 35
-
+        build_panel.is_visible = True
         self.panels["build_panel"] = build_panel
+        # Build panel buttons are added/updated via set_build_panel_button_actions
+
+
+        # --- Escape Menu Panel ---
+        menu_width = 200
+        menu_height = 250 # Adjusted height for more buttons
+        menu_x = (self.screen_width - menu_width) // 2
+        menu_y = (self.screen_height - menu_height) // 2
+
+        escape_menu_panel = UIPanel(menu_x, menu_y, menu_width, menu_height,
+                                    self.config.COLOR_GREY, self.config.COLOR_LIGHT_GREY, self.config)
+        escape_menu_panel.is_visible = False # Initially hidden
+
+        # Buttons for Escape Menu - actions will be set in main.py or by toggle_escape_menu
+        button_width = menu_width - 2 * self.config.UI_PADDING
+        button_height = 30
+        current_menu_button_y = self.config.UI_PADDING
+
+        escape_menu_panel.add_text_label(lambda gs: "PAUSED", (self.config.UI_PADDING, current_menu_button_y), self.config.UI_TEXT_COLOR)
+        current_menu_button_y += 30
+
+        # Resume Button - action defined here to toggle visibility
+        self.resume_button = escape_menu_panel.add_button(self.config.UI_PADDING, current_menu_button_y, button_width, button_height, "Resume", self.toggle_escape_menu)
+        current_menu_button_y += button_height + self.config.UI_PADDING
+
+        # Save Button
+        self.save_button = escape_menu_panel.add_button(self.config.UI_PADDING, current_menu_button_y, button_width, button_height, "Save Game", None) # Action set in main.py
+        current_menu_button_y += button_height + self.config.UI_PADDING
+
+        # Load Button
+        self.load_button = escape_menu_panel.add_button(self.config.UI_PADDING, current_menu_button_y, button_width, button_height, "Load Game", None) # Action set in main.py
+        current_menu_button_y += button_height + self.config.UI_PADDING
+
+        # Quit Button
+        self.quit_button = escape_menu_panel.add_button(self.config.UI_PADDING, current_menu_button_y, button_width, button_height, "Quit Game", None) # Action set in main.py
+
+        self.panels["escape_menu_panel"] = escape_menu_panel
+
+
+    def toggle_escape_menu(self):
+        self.escape_menu_visible = not self.escape_menu_visible
+        self.panels["escape_menu_panel"].is_visible = self.escape_menu_visible
+        print(f"Escape menu toggled. Visible: {self.escape_menu_visible}")
+        return self.escape_menu_visible
 
 
     def draw(self, surface, game_state):
+        # Draw normal panels first
         for panel_name, panel in self.panels.items():
+            if panel_name == "escape_menu_panel":
+                continue
             if hasattr(panel, 'is_visible') and not panel.is_visible:
                 continue
-            panel.draw(surface, game_state)
+            # Pass False for is_interactive_panel if escape menu is up, otherwise True
+            is_interactive = not self.escape_menu_visible
+            panel.draw(surface, game_state, is_interactive_panel=is_interactive)
 
-        # Handle alert display timing
+        # If escape menu is visible, draw overlay and then the menu (it's always interactive)
+        if self.escape_menu_visible:
+            surface.blit(self.overlay_surface, (0,0))
+            self.panels["escape_menu_panel"].draw(surface, game_state, is_interactive_panel=True)
+
+        # Handle alert display timing. Alerts are part of status_panel, so their interactivity is handled above.
         if game_state.current_alerts:
             self.alert_timer +=1
             if self.alert_timer > self.alert_display_duration:
@@ -258,162 +294,164 @@ class UIManager:
             self.alert_timer = 0 # Reset if no alerts
 
 
-    def handle_event(self, event, game_state): # game_state is needed for button actions that might depend on it
+    def handle_event(self, event, game_state): # game_state is needed for button actions
+        if self.escape_menu_visible:
+            # If escape menu is active, only it should process events
+            if self.panels["escape_menu_panel"].handle_event(event):
+                # If the resume button (whose action is self.toggle_escape_menu) was clicked,
+                # handle_event would call toggle_escape_menu, which hides the menu.
+                # We need to signal to main.py that the game should unpause.
+                # This could be done by the toggle_escape_menu returning a value,
+                # or main.py checking the visibility status after this call.
+                return True # Event handled by escape menu
+            # If the event was not handled by a button in the escape menu (e.g., a click outside buttons),
+            # consume it anyway to prevent interaction with underlying game/UI.
+            if event.type == pygame.MOUSEBUTTONDOWN: # Consume clicks outside buttons
+                 if not self.panels["escape_menu_panel"].rect.collidepoint(event.pos):
+                    return True # Click was outside menu, consume it
+                 else: # Click was inside menu panel but not on a button
+                    # check if it was on a button, handled by panel.handle_event above
+                    # if not, it's a click on the panel background, consume it.
+                    is_on_button = False
+                    for elem in self.panels["escape_menu_panel"].elements:
+                        if elem["type"] == "button" and elem["widget"].rect.collidepoint(event.pos):
+                            is_on_button = True
+                            break
+                    if not is_on_button:
+                        return True
+
+
+            return True # Consume all other events when menu is open
+
+
+        # If escape menu is not visible, process events for other panels
         for panel_name, panel in self.panels.items():
+            if panel_name == "escape_menu_panel": # Already handled or not visible
+                continue
             if hasattr(panel, 'is_visible') and not panel.is_visible:
                 continue
 
-            if panel.handle_event(event): # This calls the button's action if clicked
-                # If a button's action was executed, it might have generated a sound implicitly
-                # or one could be played here. For now, keeping sound logic mainly in main.py
-                # based on the outcome of these actions.
-                # Example: if a build button was clicked successfully:
-                # if game_state.selected_building_type and panel_name == "build_panel":
-                #    sound_manager.play_sound("ui_click") # if not handled by the action itself.
-                return True # Event was handled by a button in this panel
+            if panel.handle_event(event):
+                return True # Event handled by another panel
         return False
 
     def set_build_panel_button_actions(self, game_state_ref):
         """Updates build panel buttons based on game_state (unlocks, affordability)."""
         build_panel = self.panels.get("build_panel")
         if build_panel:
+        # Optimized: Clear and re-add only if necessary or if content changes significantly.
+        # For now, full refresh is simpler.
             current_y = self.config.UI_PADDING
-            build_panel.elements = [] # Clear old buttons before re-adding with new actions
+        build_panel.elements = [] # Clear old buttons/labels
 
             build_panel.add_text_label(lambda gs: "BUILD MENU (Rank: "+gs.city_rank+")", (self.config.UI_PADDING, current_y), self.config.UI_TEXT_COLOR)
             current_y += 25
 
             # --- Add Bulldozer Button ---
-            def create_bulldozer_action(gs_ref):
+        def create_bulldozer_action(gs_ref_inner): # Renamed to avoid conflict
                 def action_func():
-                    gs_ref.selected_building_type = None # Clear any building selection
-                    gs_ref.current_tool = "bulldozer"
+                gs_ref_inner.selected_building_type = None
+                gs_ref_inner.current_tool = "bulldozer"
                     print("UI: Selected BULLDOZER tool.")
-                    # TODO: Play sound_manager.play_sound("ui_click_special") or similar
-                    if hasattr(gs_ref, 'sound_manager_instance') and gs_ref.sound_manager_instance: # Check if sound_manager is accessible
-                        gs_ref.sound_manager_instance.play_sound("ui_click")
+                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                    gs_ref_inner.sound_manager_instance.play_sound("ui_click")
                 return action_func
 
             bulldozer_action = create_bulldozer_action(game_state_ref)
             bulldozer_button_text = "BULLDOZE"
+        # Determine color based on current tool
             bulldozer_color = self.config.COLOR_RED if game_state_ref.current_tool == "bulldozer" else self.config.COLOR_BLUE
 
             button_widget = build_panel.add_button(
                 self.config.UI_PADDING, current_y,
                 build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-                bulldozer_button_text,
-                bulldozer_action
+            bulldozer_button_text, bulldozer_action
             )
-            button_widget.button_color = bulldozer_color
-            button_widget.text_color = self.config.UI_TEXT_COLOR # Keep text color standard for now
+        button_widget.button_color = bulldozer_color # Apply dynamic color
             current_y += 35
             # --- End Bulldozer Button ---
 
-
-            for i, (b_key, b_data) in enumerate(self.config.BUILDING_TYPES.items()):
-                # Check if the building is unlocked before adding the button
+        for b_key, b_data in self.config.BUILDING_TYPES.items():
                 if game_state_ref.is_building_unlocked(b_key):
-                    def create_build_action_with_gs(key_to_build, gs_ref):
-                        # Action: set selected building type if affordable
+                def create_build_action_with_gs(key_to_build, gs_ref_inner):
                         def action_func():
-                            gs_ref.current_tool = None # Clear bulldozer tool if active
-                            # Check unlock status again just in case it changed between UI refresh and click
-                            if not gs_ref.is_building_unlocked(key_to_build):
+                        gs_ref_inner.current_tool = None # Clear bulldozer
+                        if not gs_ref_inner.is_building_unlocked(key_to_build):
                                 print(f"UI: {b_data['ui_name']} is locked.")
-                                # self.sound_manager.play_sound("alert_warning") # Requires sound_manager in UIManager
+                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                 gs_ref_inner.sound_manager_instance.play_sound("alert_warning")
                                 return
-
-                            if gs_ref.credits >= gs_ref.config.BUILDING_TYPES[key_to_build].get('cost', 0):
-                                setattr(gs_ref, 'selected_building_type', key_to_build)
+                        if gs_ref_inner.credits >= b_data.get('cost', 0):
+                            gs_ref_inner.selected_building_type = key_to_build
                                 print(f"UI: Selected {key_to_build} for building.")
-                                # self.sound_manager.play_sound("ui_click")
+                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                 gs_ref_inner.sound_manager_instance.play_sound("ui_click")
                             else:
                                 print(f"UI: Cannot select {key_to_build}, not enough credits.")
-                                # self.sound_manager.play_sound("insufficient_credits")
-                                gs_ref.current_alerts.append(f"Need {gs_ref.config.BUILDING_TYPES[key_to_build].get('cost', 0)} CR")
+                            gs_ref_inner.current_alerts.append(f"Need {b_data['cost']} CR for {b_data['ui_name']}")
+                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                 gs_ref_inner.sound_manager_instance.play_sound("error_credits")
                         return action_func
 
                     action = create_build_action_with_gs(b_key, game_state_ref)
-
                     button_text = f"{b_data['ui_name']} ({b_data['cost']}CR)"
-
                     current_button_color = self.config.COLOR_BLUE
                     text_color = self.config.UI_TEXT_COLOR
 
-                    # Highlight if this building type is selected
                     if game_state_ref.selected_building_type == b_key:
-                        current_button_color = self.config.COLOR_AMBER # Highlight selected building type
-
+                    current_button_color = self.config.COLOR_AMBER
                     if game_state_ref.credits < b_data.get('cost',0):
-                        current_button_color = (60,60,60) # Dim if not affordable
+                    current_button_color = (60,60,60)
                         text_color = (150,150,150)
 
-
-                    button_widget = build_panel.add_button(
+                button_widget_instance = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
                         build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-                        button_text,
-                        action
+                    button_text, action
                     )
-                    button_widget.button_color = current_button_color
-                    button_widget.text_color = text_color
+                button_widget_instance.button_color = current_button_color
+                button_widget_instance.text_color = text_color
                     current_y += 35
-                else:
-                    # Optionally, show locked buildings as greyed out / unclickable
+            else: # Locked building
                     button_text = f"{b_data['ui_name']} (Locked)"
-                    button_widget = build_panel.add_button(
+                locked_button_widget = build_panel.add_button(
                         self.config.UI_PADDING, current_y,
                         build_panel.rect.width - 2 * self.config.UI_PADDING, 30,
-                        button_text,
-                        None # No action for locked buttons
+                    button_text, None # No action
                     )
-                    button_widget.button_color = (30,30,30) # Very dim
-                    button_widget.text_color = (100,100,100)
-                    button_widget.is_hovered = False # Prevent hover effect
+                locked_button_widget.button_color = (30,30,30)
+                locked_button_widget.text_color = (100,100,100)
                     current_y += 35
-                    pass
 
     def set_time_control_button_actions(self, game_state_ref):
         """Sets the correct game_state reference for time control button actions and updates their appearance."""
         status_panel = self.panels.get("status_panel")
         if status_panel:
-            # Find the time control buttons and update their actions and appearance
-            # This assumes they are added in a specific order or can be identified.
-            # For simplicity, let's re-find them by a characteristic if possible, or re-create relevant part.
-
-            # Simplified approach: Iterate all buttons in status_panel, identify time control ones by text.
-            # This is less efficient than storing them directly but demonstrates the idea.
-
-            time_button_idx = 0 # To pick from TIME_MULTIPLIER_OPTIONS
-
+        time_button_idx = 0
             for elem in status_panel.elements:
-                if elem["type"] == "button" and "x" in elem["widget"].text: # Basic check for "1x", "2x" etc.
+            if elem["type"] == "button" and "widget" in elem and "x" in elem["widget"].text: # Identify time buttons
                     if time_button_idx < len(self.config.TIME_MULTIPLIER_OPTIONS):
                         speed = self.config.TIME_MULTIPLIER_OPTIONS[time_button_idx]
 
-                        # Create the action with the correct game_state_ref
-                        def create_time_action(gs_ref, multiplier): # Closure
+                    def create_time_action(gs_ref_inner, multiplier_inner): # Unique names for closure
                             def action_func():
-                                gs_ref.time_multiplier = multiplier
-                                print(f"UI: Time multiplier set to {multiplier}x")
-                                # Potentially play sound via gs_ref if sound_manager is accessible
-                                if hasattr(gs_ref, 'sound_manager_instance') and gs_ref.sound_manager_instance:
-                                     gs_ref.sound_manager_instance.play_sound("ui_click")
-                                # After changing multiplier, we might want to refresh the UI elements that show it (like button colors)
-                                self.set_time_control_button_actions(gs_ref) # Refresh appearance
+                            if self.escape_menu_visible: return # Don't change time if menu is open / game paused
+
+                            gs_ref_inner.time_multiplier = multiplier_inner
+                            print(f"UI: Time multiplier set to {multiplier_inner}x")
+                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                gs_ref_inner.sound_manager_instance.play_sound("ui_click")
+                            self.set_time_control_button_actions(gs_ref_inner) # Refresh appearance
                             return action_func
 
                         elem["widget"].action = create_time_action(game_state_ref, speed)
 
-                        # Update appearance based on current selection
                         if game_state_ref.time_multiplier == speed:
-                            elem["widget"].button_color = self.config.COLOR_AMBER # Highlight active speed
+                        elem["widget"].button_color = self.config.COLOR_AMBER
                             elem["widget"].text_color = self.config.COLOR_BLACK
                         else:
-                            elem["widget"].button_color = self.config.COLOR_BLUE # Default for non-active
+                        elem["widget"].button_color = self.config.COLOR_BLUE
                             elem["widget"].text_color = self.config.UI_TEXT_COLOR
-
                         time_button_idx += 1
-
 
 print("UI module loaded.")

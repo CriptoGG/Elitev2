@@ -40,6 +40,7 @@ class TestGameState(unittest.TestCase):
                 {"name": "Test Rank 1", "threshold_value": 0},
                 {"name": "Test Rank 2", "threshold_value": 100},
             ]
+            DEFAULT_TIME_MULTIPLIER = 1 # Added for GameState init
             RESOURCE_NODE_TYPES = {} # Added for GameState initialization
 
 
