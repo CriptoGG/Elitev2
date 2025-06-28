@@ -9,10 +9,9 @@ import pygame
 def init_display(width, height, caption="Sci-Fi City Builder"):
     """Initializes the Pygame display."""
     pygame.init()
-    # Add pygame.RESIZABLE flag to allow window resizing
-    screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+    screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption(caption)
-    print(f"Display initialized: {width}x{height} (Resizable)")
+    print(f"Display initialized: {width}x{height}")
     return screen
 
 def draw_wireframe_rect(surface, color, rect, thickness=1):
