@@ -226,7 +226,7 @@ def game_loop():
                                     current_game_state.current_alerts.append(msg)
                                 elif current_game_state.credits < building_cost:
                                     msg = "Insufficient Credits!"
-                                    sound_manager_instance.play_sound("error_credits") # Changed sound
+                                    sound_manager_instance.play_sound("insufficient_credits") # Changed sound
                                     current_game_state.current_alerts.append(msg)
                                 else:
                                     can_place = True

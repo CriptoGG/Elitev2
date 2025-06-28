@@ -390,7 +390,7 @@ class UIManager:
                                 print(f"UI: Cannot select {key_to_build}, not enough credits.")
                                 gs_ref_inner.current_alerts.append(f"Need {b_data['cost']} CR for {b_data['ui_name']}")
                                 if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                                     gs_ref_inner.sound_manager_instance.play_sound("error_credits")
+                                     gs_ref_inner.sound_manager_instance.play_sound("insufficient_credits")
                         return action_func
 
                     action = create_build_action_with_gs(b_key, game_state_ref)
