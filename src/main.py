@@ -26,7 +26,7 @@ def save_game(current_gs):
         current_gs.current_alerts.append("Error Saving Game!")
 
 
-def load_game(current_gs):
+def load_game(current_gs, passed_ui_manager): # Added passed_ui_manager parameter
     """Loads game state from a file."""
     if not os.path.exists(SAVE_FILE_NAME):
         print(f"Save file {SAVE_FILE_NAME} not found.")
@@ -38,13 +38,16 @@ def load_game(current_gs):
             loaded_data = json.load(f)
 
         # Pass the actual buildings.Building constructor and config.BUILDING_TYPES
+        # Also pass the ui_manager instance for UI updates after load
         if current_gs.load_from_data(loaded_data, buildings.Building, config.BUILDING_TYPES):
             print("Game loaded successfully.")
             current_gs.current_alerts.append("Game Loaded!")
             # Crucial: UI needs to be updated to reflect new state, especially build menu
-            # This will be handled by the periodic ui_manager.set_build_panel_button_actions call
-            # Also, explicitly refresh build panel after load as unlocks might have changed
-            ui_manager.set_build_panel_button_actions(current_gs)
+            if passed_ui_manager: # Check if ui_manager was passed
+                passed_ui_manager.set_build_panel_button_actions(current_gs)
+            else:
+                print("Warning: ui_manager not passed to load_game, UI may not refresh correctly.")
+
 
         else:
             print("Failed to load game from data.")
@@ -75,7 +78,8 @@ def game_loop():
     if ui_manager.save_button: # Check if button was created
         ui_manager.save_button.action = lambda: save_game(current_game_state)
     if ui_manager.load_button:
-        ui_manager.load_button.action = lambda: load_game(current_game_state)
+        # Pass ui_manager to the load_game function via lambda
+        ui_manager.load_button.action = lambda: load_game(current_game_state, ui_manager)
 
     # This ensures button actions in the UI can modify the game state (for build panel)
     ui_manager.set_build_panel_button_actions(current_game_state)
