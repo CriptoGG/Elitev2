@@ -164,13 +164,44 @@ class UIManager:
         col3_x = max(col3_x, self.screen_width - 220)
 
 
-        status_panel.add_text_label(lambda gs: f"TIME: {gs.game_time // gs.config.FPS}s", (col3_x, self.config.UI_PADDING), self.config.UI_TEXT_COLOR)
+        status_panel.add_text_label(lambda gs: f"TIME: {gs.game_time // gs.config.FPS}s ({gs.time_multiplier}x)", (col3_x, self.config.UI_PADDING), self.config.UI_TEXT_COLOR)
         status_panel.add_text_label(lambda gs: f"RANK: {gs.city_rank}", (col3_x, self.config.UI_PADDING + 20), self.config.UI_TEXT_COLOR)
         status_panel.add_text_label(lambda gs: f"FPS: {int(gs.clock.get_fps()) if gs.clock else 'N/A'}", (col3_x, self.config.UI_PADDING + 40), self.config.UI_TEXT_COLOR)
 
+        # Time Control Buttons
+        time_button_width = 30
+        time_button_y = self.config.UI_PADDING + 60 # Below FPS
+
+        def create_time_control_action(gs_ref, multiplier):
+            def action_func():
+                gs_ref.time_multiplier = multiplier
+                print(f"UI: Time multiplier set to {multiplier}x")
+                # Consider playing a sound here if UIManager has access to SoundManager
+            return action_func
+
+        # Initial position for the first time control button
+        current_time_button_x = col3_x
+
+        for i, speed in enumerate(self.config.TIME_MULTIPLIER_OPTIONS):
+            button = status_panel.add_button(
+                current_time_button_x, time_button_y,
+                time_button_width, 25,
+                f"{speed}x",
+                create_time_control_action(None, speed) # Placeholder for game_state_ref, will be set properly later
+            )
+            # Store these buttons if they need to be updated (e.g., to show active speed)
+            # For now, their action is static once created with the game_state_ref.
+            current_time_button_x += time_button_width + 5 # Add padding between buttons
+
+
         # Save/Load Buttons - actions will be set in main.py
-        self.save_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING, 60, 25, "SAVE", None) # Action set later
-        self.load_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING + 30, 60, 25, "LOAD", None) # Action set later
+        # Position them to avoid overlap with time controls if col3_x is constrained
+        save_load_y_offset = 0
+        if len(self.config.TIME_MULTIPLIER_OPTIONS) > 0 : save_load_y_offset = 30 # Move SL buttons down if time controls exist
+
+        self.save_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING + save_load_y_offset, 60, 25, "SAVE", None) # Action set later
+        self.load_button = status_panel.add_button(col3_x + 80, self.config.UI_PADDING + 30 + save_load_y_offset, 60, 25, "LOAD", None) # Action set later
+
 
         # Alerts display
         self.alert_display_duration = self.config.FPS * 3 # Display alert for 3 seconds
@@ -341,6 +372,48 @@ class UIManager:
                     button_widget.is_hovered = False # Prevent hover effect
                     current_y += 35
                     pass
+
+    def set_time_control_button_actions(self, game_state_ref):
+        """Sets the correct game_state reference for time control button actions and updates their appearance."""
+        status_panel = self.panels.get("status_panel")
+        if status_panel:
+            # Find the time control buttons and update their actions and appearance
+            # This assumes they are added in a specific order or can be identified.
+            # For simplicity, let's re-find them by a characteristic if possible, or re-create relevant part.
+
+            # Simplified approach: Iterate all buttons in status_panel, identify time control ones by text.
+            # This is less efficient than storing them directly but demonstrates the idea.
+
+            time_button_idx = 0 # To pick from TIME_MULTIPLIER_OPTIONS
+
+            for elem in status_panel.elements:
+                if elem["type"] == "button" and "x" in elem["widget"].text: # Basic check for "1x", "2x" etc.
+                    if time_button_idx < len(self.config.TIME_MULTIPLIER_OPTIONS):
+                        speed = self.config.TIME_MULTIPLIER_OPTIONS[time_button_idx]
+
+                        # Create the action with the correct game_state_ref
+                        def create_time_action(gs_ref, multiplier): # Closure
+                            def action_func():
+                                gs_ref.time_multiplier = multiplier
+                                print(f"UI: Time multiplier set to {multiplier}x")
+                                # Potentially play sound via gs_ref if sound_manager is accessible
+                                if hasattr(gs_ref, 'sound_manager_instance') and gs_ref.sound_manager_instance:
+                                     gs_ref.sound_manager_instance.play_sound("ui_click")
+                                # After changing multiplier, we might want to refresh the UI elements that show it (like button colors)
+                                self.set_time_control_button_actions(gs_ref) # Refresh appearance
+                            return action_func
+
+                        elem["widget"].action = create_time_action(game_state_ref, speed)
+
+                        # Update appearance based on current selection
+                        if game_state_ref.time_multiplier == speed:
+                            elem["widget"].button_color = self.config.COLOR_AMBER # Highlight active speed
+                            elem["widget"].text_color = self.config.COLOR_BLACK
+                        else:
+                            elem["widget"].button_color = self.config.COLOR_BLUE # Default for non-active
+                            elem["widget"].text_color = self.config.UI_TEXT_COLOR
+
+                        time_button_idx += 1
 
 
 print("UI module loaded.")
