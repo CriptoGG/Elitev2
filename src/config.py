@@ -9,8 +9,10 @@ import os
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 # Screen dimensions
-SCREEN_WIDTH = 1024
-SCREEN_HEIGHT = 768
+SCREEN_WIDTH = 1024  # Initial screen width
+SCREEN_HEIGHT = 768 # Initial screen height
+MIN_SCREEN_WIDTH = 800 # Minimum resizable width
+MIN_SCREEN_HEIGHT = 600 # Minimum resizable height
 FPS = 60
 
 # Colors (Elite-inspired: Green on Black as a base)
