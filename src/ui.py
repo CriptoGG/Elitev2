@@ -373,34 +373,45 @@ class UIManager:
 
             for b_key, b_data in self.config.BUILDING_TYPES.items():
                 if game_state_ref.is_building_unlocked(b_key):
-                    def create_build_action_with_gs(key_to_build, gs_ref_inner):
+                    # Modified function signature to include building_ui_name and building_cost
+                    def create_build_action_with_gs(key_to_build, building_ui_name, building_cost, gs_ref_inner):
                         def action_func():
                             gs_ref_inner.current_tool = None # Clear bulldozer
                             if not gs_ref_inner.is_building_unlocked(key_to_build):
-                                print(f"UI: {b_data['ui_name']} is locked.")
+                                # Use passed parameters instead of b_data from outer scope
+                                print(f"UI: {building_ui_name} is locked.")
                                 if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
                                      gs_ref_inner.sound_manager_instance.play_sound("alert_warning")
                                 return
-                            if gs_ref_inner.credits >= b_data.get('cost', 0):
+                            # Use passed building_cost
+                            if gs_ref_inner.credits >= building_cost:
                                 gs_ref_inner.selected_building_type = key_to_build
                                 print(f"UI: Selected {key_to_build} for building.")
                                 if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
                                      gs_ref_inner.sound_manager_instance.play_sound("ui_click")
                             else:
+                                # Use passed parameters
                                 print(f"UI: Cannot select {key_to_build}, not enough credits.")
-                                gs_ref_inner.current_alerts.append(f"Need {b_data['cost']} CR for {b_data['ui_name']}")
+                                gs_ref_inner.current_alerts.append(f"Need {building_cost} CR for {building_ui_name}")
                                 if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
                                      gs_ref_inner.sound_manager_instance.play_sound("insufficient_credits")
                         return action_func
 
-                    action = create_build_action_with_gs(b_key, game_state_ref)
+                    # Pass the specific b_data items to the factory function
+                    action = create_build_action_with_gs(
+                        b_key,
+                        b_data['ui_name'],
+                        b_data.get('cost', 0),
+                        game_state_ref
+                    )
                     button_text = f"{b_data['ui_name']} ({b_data['cost']}CR)"
                     current_button_color = self.config.COLOR_BLUE
                     text_color = self.config.UI_TEXT_COLOR
 
                     if game_state_ref.selected_building_type == b_key:
                         current_button_color = self.config.COLOR_AMBER
-                    if game_state_ref.credits < b_data.get('cost',0):
+                    # Check cost against the actual b_data.get('cost',0) for this iteration
+                    if game_state_ref.credits < b_data.get('cost', 0):
                         current_button_color = (60,60,60)
                         text_color = (150,150,150)
 
