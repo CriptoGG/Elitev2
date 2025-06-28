@@ -74,14 +74,9 @@ def game_loop():
     sound_manager_instance = sound_manager.SoundManager(config) # Initialize SoundManager
     ui_manager = ui.UIManager(config.SCREEN_WIDTH, config.SCREEN_HEIGHT, config) # Pass sound_manager if UI needs to play sounds directly
 
-    # Connect Save/Load buttons
-    if ui_manager.save_button: # Check if button was created
-        ui_manager.save_button.action = lambda: save_game(current_game_state)
-    if ui_manager.load_button:
-        # Pass ui_manager to the load_game function via lambda
-        ui_manager.load_button.action = lambda: load_game(current_game_state, ui_manager)
-
     # Initialize UIManager with game_state and function references
+    # The UIManager now internally handles save/load button actions
+    # by calling these functions.
     ui_manager.set_initial_game_state_ref(current_game_state)
     ui_manager.save_game_func = save_game # Pass the actual function
     ui_manager.load_game_func = load_game # Pass the actual function
