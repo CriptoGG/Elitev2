@@ -40,6 +40,7 @@ class TestGameState(unittest.TestCase):
                 {"name": "Test Rank 1", "threshold_value": 0},
                 {"name": "Test Rank 2", "threshold_value": 100},
             ]
+            RESOURCE_NODE_TYPES = {} # Added for GameState initialization
 
 
         self.config = MockConfig()
