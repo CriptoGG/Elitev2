@@ -427,30 +427,30 @@ class UIManager:
         """Sets the correct game_state reference for time control button actions and updates their appearance."""
         status_panel = self.panels.get("status_panel")
         if status_panel:
-        time_button_idx = 0
+            time_button_idx = 0
             for elem in status_panel.elements:
-            if elem["type"] == "button" and "widget" in elem and "x" in elem["widget"].text: # Identify time buttons
+                if elem["type"] == "button" and "widget" in elem and "x" in elem["widget"].text: # Identify time buttons
                     if time_button_idx < len(self.config.TIME_MULTIPLIER_OPTIONS):
                         speed = self.config.TIME_MULTIPLIER_OPTIONS[time_button_idx]
 
-                    def create_time_action(gs_ref_inner, multiplier_inner): # Unique names for closure
+                        def create_time_action(gs_ref_inner, multiplier_inner): # Unique names for closure
                             def action_func():
-                            if self.escape_menu_visible: return # Don't change time if menu is open / game paused
+                                if self.escape_menu_visible: return # Don't change time if menu is open / game paused
 
-                            gs_ref_inner.time_multiplier = multiplier_inner
-                            print(f"UI: Time multiplier set to {multiplier_inner}x")
-                            if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
-                                gs_ref_inner.sound_manager_instance.play_sound("ui_click")
-                            self.set_time_control_button_actions(gs_ref_inner) # Refresh appearance
+                                gs_ref_inner.time_multiplier = multiplier_inner
+                                print(f"UI: Time multiplier set to {multiplier_inner}x")
+                                if hasattr(gs_ref_inner, 'sound_manager_instance') and gs_ref_inner.sound_manager_instance:
+                                    gs_ref_inner.sound_manager_instance.play_sound("ui_click")
+                                self.set_time_control_button_actions(gs_ref_inner) # Refresh appearance
                             return action_func
 
                         elem["widget"].action = create_time_action(game_state_ref, speed)
 
                         if game_state_ref.time_multiplier == speed:
-                        elem["widget"].button_color = self.config.COLOR_AMBER
+                            elem["widget"].button_color = self.config.COLOR_AMBER
                             elem["widget"].text_color = self.config.COLOR_BLACK
                         else:
-                        elem["widget"].button_color = self.config.COLOR_BLUE
+                            elem["widget"].button_color = self.config.COLOR_BLUE
                             elem["widget"].text_color = self.config.UI_TEXT_COLOR
                         time_button_idx += 1
 
